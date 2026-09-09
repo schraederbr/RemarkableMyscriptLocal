@@ -1,0 +1,25 @@
+# Build artifacts
+/dist/
+*.exe
+/bin/
+/rm2hwr
+/rm2hwr.exe
+/rm2hwr-armv7
+/rm2hwr-linux-armv7
+
+# Secrets — never commit real keys
+conf/hwr.env
+*.env
+!conf/hwr.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Test / local output
+/out/
+*.test
+coverage.out
