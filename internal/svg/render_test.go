@@ -27,9 +27,9 @@ func TestRenderContentFit(t *testing.T) {
 		Strokes: []rmv5.Stroke{{
 			Width: 2,
 			Points: []rmv5.Point{
-				{X: 100, Y: 200},
-				{X: 150, Y: 250},
-				{X: 200, Y: 220},
+				{X: 100, Y: 200, Width: 3},
+				{X: 150, Y: 250, Width: 3},
+				{X: 200, Y: 220, Width: 3},
 			},
 		}},
 	}}}
@@ -59,5 +59,41 @@ func TestRenderContentFit(t *testing.T) {
 	}
 	if !strings.Contains(s, "100.00,200.00 150.00,250.00 200.00,220.00") {
 		t.Fatalf("missing points: %s", s)
+	}
+	if !strings.Contains(s, `stroke-width="3.00"`) {
+		t.Fatalf("expected mean point width 3.00, got: %s", s)
+	}
+}
+
+func TestStrokeWidthUsesPointMean(t *testing.T) {
+	page := &rmv5.Page{Layers: []rmv5.Layer{{
+		Strokes: []rmv5.Stroke{{
+			Width: 2, // pen size — must NOT win over point widths
+			Points: []rmv5.Point{
+				{X: 0, Y: 0, Width: 2},
+				{X: 10, Y: 0, Width: 4},
+				{X: 20, Y: 0, Width: 6},
+			},
+		}},
+	}}}
+	s := string(Render(page))
+	if !strings.Contains(s, `stroke-width="4.00"`) {
+		t.Fatalf("want mean point width 4.00: %s", s)
+	}
+}
+
+func TestStrokeWidthFallsBackToStrokeWidth(t *testing.T) {
+	page := &rmv5.Page{Layers: []rmv5.Layer{{
+		Strokes: []rmv5.Stroke{{
+			Width: 2.5,
+			Points: []rmv5.Point{
+				{X: 0, Y: 0},
+				{X: 10, Y: 0},
+			},
+		}},
+	}}}
+	s := string(Render(page))
+	if !strings.Contains(s, `stroke-width="2.50"`) {
+		t.Fatalf("want stroke-level fallback 2.50: %s", s)
 	}
 }

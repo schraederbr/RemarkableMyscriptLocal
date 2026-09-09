@@ -14,6 +14,10 @@ const pad = 40.0
 // Render returns SVG bytes for the page's ink, or nil when there are no usable strokes.
 // viewBox = ink bbox + padding; width/height = ceil(viewBox) at 1:1 (no downscale).
 // White background; black polylines with round caps; no page frame.
+//
+// stroke-width uses the mean of per-point Width values (firmware already folds
+// pressure into those). Falls back to the stroke-level Width (pen size /
+// thickness_scale) when no positive point widths exist.
 func Render(page *rmv5.Page) []byte {
 	if page == nil {
 		return nil
@@ -82,13 +86,7 @@ func Render(page *rmv5.Page) []byte {
 		for _, p := range s.Points {
 			pts = append(pts, fmt.Sprintf("%.2f,%.2f", p.X, p.Y))
 		}
-		sw := float64(s.Width)
-		if sw < 0.5 {
-			sw = 1.5
-		}
-		if sw > 12 {
-			sw = 12
-		}
+		sw := strokeWidth(s)
 		b.WriteString(fmt.Sprintf(
 			`  <polyline fill="none" stroke="#111" stroke-width="%.2f" stroke-linecap="round" stroke-linejoin="round" points="%s"/>`+"\n",
 			sw, strings.Join(pts, " "),
@@ -96,4 +94,28 @@ func Render(page *rmv5.Page) []byte {
 	}
 	b.WriteString("</svg>\n")
 	return []byte(b.String())
+}
+
+// strokeWidth returns SVG user-unit stroke-width for one polyline.
+// Prefer mean per-point width (page-space); fall back to stroke.Width.
+func strokeWidth(s rmv5.Stroke) float64 {
+	var sum float64
+	n := 0
+	for _, p := range s.Points {
+		if p.Width > 0 {
+			sum += float64(p.Width)
+			n++
+		}
+	}
+	sw := float64(s.Width)
+	if n > 0 {
+		sw = sum / float64(n)
+	}
+	if sw < 0.25 {
+		sw = 0.25
+	}
+	if sw > 24 {
+		sw = 24
+	}
+	return sw
 }

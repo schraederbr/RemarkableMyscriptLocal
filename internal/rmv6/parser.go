@@ -290,7 +290,8 @@ func decodePoint(b []byte, version uint8) (rmv5.Point, error) {
 		}
 	case 2:
 		speed = float32(binary.LittleEndian.Uint16(b[8:10]))
-		width = float32(binary.LittleEndian.Uint16(b[10:12]))
+		// uint16 is rmscene-style width*4; convert to page-space like v5 point widths.
+		width = float32(binary.LittleEndian.Uint16(b[10:12])) / 4
 		tilt = float32(b[12])
 		pressure = float32(b[13]) / 255 // u8 0?255 ? ~0?1
 	default:
