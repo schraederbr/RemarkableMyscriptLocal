@@ -13,7 +13,7 @@ HWR=/home/root/hwr
 
 echo "==> identity"
 uname -m
-test "$(uname -m)" = "armv7l" || { echo "not armv7l — abort"; exit 1; }
+test "$(uname -m)" = "armv7l" || { echo "not armv7l â€” abort"; exit 1; }
 ls /lib/libc.so.6 2>/dev/null || true
 
 mkdir -p "$OPT" "$NPM_PREFIX" "$DOWNLOADS" "$HWR/bin" "$HWR/conf" "$HWR/scripts" "$HWR/out"
@@ -44,8 +44,23 @@ npm install -g jonobones --ignore-scripts --ignore-engines --no-fund --no-audit
 
 echo "==> fetch Revcord sqlite3 binary"
 cd "$DOWNLOADS"
-if [ ! -f node_sqlite3.node ]; then
-  wget -O node_sqlite3.node "$SQLITE_URL" 2>/dev/null || curl -fsSL -o node_sqlite3.node "$SQLITE_URL"
+# Prefer repo-bundled / scp'd copy (tablet often has no wget/curl)
+if [ -f /home/root/hwr/third_party/revcord/node_sqlite3.node ]; then
+  cp /home/root/hwr/third_party/revcord/node_sqlite3.node "$DOWNLOADS/node_sqlite3.node"
+  echo "using bundled /home/root/hwr/third_party/revcord/node_sqlite3.node"
+elif [ -f /home/root/hwr/scripts/node_sqlite3.node ]; then
+  cp /home/root/hwr/scripts/node_sqlite3.node "$DOWNLOADS/node_sqlite3.node"
+  echo "using /home/root/hwr/scripts/node_sqlite3.node"
+elif [ ! -f node_sqlite3.node ]; then
+  if command -v wget >/dev/null 2>&1; then
+    wget -O node_sqlite3.node "$SQLITE_URL"
+  elif command -v curl >/dev/null 2>&1; then
+    curl -fsSL -o node_sqlite3.node "$SQLITE_URL"
+  else
+    echo "ERROR: no node_sqlite3.node and no wget/curl."
+    echo "scp third_party/revcord/node_sqlite3.node to /home/root/hwr/third_party/revcord/"
+    exit 1
+  fi
 fi
 
 echo "==> install binding into every sqlite3 tree"

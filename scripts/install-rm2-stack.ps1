@@ -56,7 +56,7 @@ if (-not $HostName) {
   Write-Host ""
   Write-Host "How is the tablet connected?"
   Write-Host "  1) USB  (default gateway 10.11.99.1)"
-  Write-Host "  2) Wi‑Fi (you enter the IP)"
+  Write-Host "  2) Wiâ€‘Fi (you enter the IP)"
   $choice = Ask "Choice" "1"
   if ($choice -eq "2") {
     $HostName = Ask "Tablet IP"
@@ -80,7 +80,7 @@ function Copy-ToRemote([string]$local, [string]$remote) {
   if ($LASTEXITCODE -ne 0) { throw "scp failed: $local -> $remote" }
 }
 
-Info "Checking SSH…"
+Info "Checking SSHâ€¦"
 try {
   Invoke-Remote "uname -m && cat /etc/os-release | head -n 5"
   Ok "SSH works"
@@ -92,14 +92,14 @@ try {
 
 $arch = (& ssh "${User}@${HostName}" "uname -m").Trim()
 if ($arch -ne "armv7l") {
-  throw "Expected armv7l, got '$arch' — this installer is for reMarkable 2 only."
+  throw "Expected armv7l, got '$arch' â€” this installer is for reMarkable 2 only."
 }
 
 # --- build rm2hwr ---
 $dist = Join-Path $RepoRoot "dist\rm2hwr-linux-armv7"
 if (-not $SkipBuild) {
   if (AskYes "Cross-compile rm2hwr for linux/armv7?" $true) {
-    Info "Building…"
+    Info "Buildingâ€¦"
     $buildPs1 = Join-Path $RepoRoot "scripts\build-armv7.ps1"
     if (Test-Path $buildPs1) {
       & powershell -NoProfile -File $buildPs1
@@ -119,10 +119,12 @@ if (-not $SkipBuild) {
 }
 
 if (Test-Path $dist) {
-  Info "Deploying rm2hwr binary + scripts…"
+  Info "Deploying rm2hwr binary + scriptsâ€¦"
   Invoke-Remote "mkdir -p /home/root/hwr/bin /home/root/hwr/conf /home/root/hwr/scripts /home/root/hwr/out"
   Copy-ToRemote $dist "/home/root/hwr/bin/rm2hwr"
   Copy-ToRemote (Join-Path $RepoRoot "scripts\joplin-upsert.js") "/home/root/hwr/scripts/joplin-upsert.js"
+  Invoke-Remote "mkdir -p /home/root/hwr/third_party/revcord"
+  Copy-ToRemote (Join-Path $RepoRoot "third_party\revcord\node_sqlite3.node") "/home/root/hwr/third_party/revcord/node_sqlite3.node"
   Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\install-node-jonobones.sh") "/home/root/hwr/scripts/install-node-jonobones.sh"
   $envExample = Join-Path $RepoRoot "conf\hwr.env.example"
   Invoke-Remote "test -f /home/root/hwr/conf/hwr.env || cp /dev/null /home/root/hwr/conf/hwr.env"
@@ -132,7 +134,7 @@ if (Test-Path $dist) {
     if ($hasEnv -eq "no") {
       Copy-ToRemote $envExample "/home/root/hwr/conf/hwr.env"
       Invoke-Remote "chmod 0600 /home/root/hwr/conf/hwr.env"
-      Warn "Seeded /home/root/hwr/conf/hwr.env — edit APP_KEY and HMAC_KEY"
+      Warn "Seeded /home/root/hwr/conf/hwr.env â€” edit APP_KEY and HMAC_KEY"
     }
   }
   Invoke-Remote "chmod 0755 /home/root/hwr/bin/rm2hwr /home/root/hwr/scripts/*.sh /home/root/hwr/scripts/*.js 2>/dev/null; true"
@@ -142,14 +144,14 @@ if (Test-Path $dist) {
 # --- Node + jonobones ---
 if (-not $SkipJonobones) {
   if (AskYes "Install/upgrade Node 20 + jonobones + sqlite drop-in on the tablet?" $true) {
-    Info "Running on-device installer (needs network on the tablet for wget/curl)…"
+    Info "Running on-device installer (needs network on the tablet for wget/curl)â€¦"
     Invoke-Remote "chmod +x /home/root/hwr/scripts/install-node-jonobones.sh && sh /home/root/hwr/scripts/install-node-jonobones.sh"
     Ok "Node/jonobones step finished"
   }
 }
 
 Write-Host ""
-Info "Manual steps (interactive — do these on the tablet SSH session):"
+Info "Manual steps (interactive â€” do these on the tablet SSH session):"
 Write-Host @"
 
   export PATH=/home/root/.npm-global/bin:/home/root/opt/node/bin:`$PATH
