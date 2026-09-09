@@ -21,14 +21,14 @@ func main() {
 	log.SetPrefix("rm2hwr: ")
 
 	var (
-		all       = flag.Bool("all", false, "process all notebooks")
-		name      = flag.String("name", "", "substring match on visibleName")
-		uuid      = flag.String("uuid", "", "document UUID")
-		page      = flag.String("page", "", "single page UUID")
-		dryRun    = flag.Bool("dry-run", false, "write MyScript JSON only; skip HTTP")
-		xochitl   = flag.String("xochitl", notebook.DefaultXochitl, "xochitl documents directory")
-		outdir    = flag.String("outdir", "/home/root/hwr/out", "output root directory")
-		envFile   = flag.String("env", "/home/root/hwr/conf/hwr.env", "hwr.env path")
+		all     = flag.Bool("all", false, "process all notebooks")
+		name    = flag.String("name", "", "substring match on visibleName")
+		uuid    = flag.String("uuid", "", "document UUID")
+		page    = flag.String("page", "", "single page UUID")
+		dryRun  = flag.Bool("dry-run", false, "write MyScript JSON only; skip HTTP")
+		xochitl = flag.String("xochitl", notebook.DefaultXochitl, "xochitl documents directory")
+		outdir  = flag.String("outdir", "/home/root/hwr/out", "output root directory")
+		envFile = flag.String("env", "/home/root/hwr/conf/hwr.env", "hwr.env path")
 	)
 	flag.Parse()
 
@@ -97,6 +97,8 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 	indexLines = append(indexLines, fmt.Sprintf("# %s (%s)", doc.Meta.VisibleName, doc.UUID))
 	indexLines = append(indexLines, fmt.Sprintf("# generated %s", time.Now().UTC().Format(time.RFC3339)))
 
+	var outcomes []pageOutcome
+
 	cfg := myscript.Config{
 		Lang:        env.Lang,
 		ContentType: env.ContentType,
@@ -110,12 +112,14 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 		if _, err := os.Stat(pref.RMPath); err != nil {
 			log.Printf("%s: missing .rm, skip", linePrefix)
 			indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tMISSING", pref.Index, pref.PageUUID))
+			outcomes = append(outcomes, pageOutcome{Index: pref.Index, PageUUID: pref.PageUUID, Status: "MISSING"})
 			continue
 		}
 
 		if !dryRun && notebook.ShouldSkip(pref.RMPath, txtPath) {
 			log.Printf("%s: out txt newer than .rm, skip", linePrefix)
 			indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tSKIP", pref.Index, pref.PageUUID))
+			outcomes = append(outcomes, pageOutcome{Index: pref.Index, PageUUID: pref.PageUUID, Status: "SKIP"})
 			continue
 		}
 
@@ -123,6 +127,7 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 		if err != nil {
 			log.Printf("%s: parse: %v", linePrefix, err)
 			indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tERROR", pref.Index, pref.PageUUID))
+			outcomes = append(outcomes, pageOutcome{Index: pref.Index, PageUUID: pref.PageUUID, Status: "ERROR"})
 			continue
 		}
 
@@ -137,6 +142,7 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 			}
 			log.Printf("%s: empty page → empty txt", linePrefix)
 			indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tEMPTY", pref.Index, pref.PageUUID))
+			outcomes = append(outcomes, pageOutcome{Index: pref.Index, PageUUID: pref.PageUUID, Status: "EMPTY"})
 			continue
 		}
 
@@ -146,6 +152,7 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 			}
 			log.Printf("%s: dry-run wrote %s", linePrefix, jsonPath)
 			indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tDRY-RUN", pref.Index, pref.PageUUID))
+			outcomes = append(outcomes, pageOutcome{Index: pref.Index, PageUUID: pref.PageUUID, Status: "DRY-RUN"})
 			continue
 		}
 
@@ -156,6 +163,7 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 		if err != nil {
 			log.Printf("%s: recognize: %v", linePrefix, err)
 			indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tERROR", pref.Index, pref.PageUUID))
+			outcomes = append(outcomes, pageOutcome{Index: pref.Index, PageUUID: pref.PageUUID, Status: "ERROR"})
 			continue
 		}
 		if !strings.HasSuffix(text, "\n") {
@@ -166,8 +174,26 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 		}
 		log.Printf("%s: wrote %s (%d bytes)", linePrefix, txtPath, len(text))
 		indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tOK", pref.Index, pref.PageUUID))
+		outcomes = append(outcomes, pageOutcome{Index: pref.Index, PageUUID: pref.PageUUID, Status: "OK"})
 	}
 
 	_, _, indexPath := notebook.OutPaths(outdir, doc.UUID, "")
-	return os.WriteFile(indexPath, []byte(strings.Join(indexLines, "\n")+"\n"), 0o644)
+	if err := os.WriteFile(indexPath, []byte(strings.Join(indexLines, "\n")+"\n"), 0o644); err != nil {
+		return err
+	}
+
+	notePages := make([]notePage, 0, len(outcomes))
+	for _, o := range outcomes {
+		txtPath, _, _ := notebook.OutPaths(outdir, doc.UUID, o.PageUUID)
+		notePages = append(notePages, notePage{
+			Number: o.Index + 1,
+			Body:   resolvePageBody(o.Status, txtPath),
+		})
+	}
+	notePath := filepath.Join(docOut, "NOTE.md")
+	if err := os.WriteFile(notePath, []byte(buildNoteMarkdown(doc.Meta.VisibleName, notePages)), 0o644); err != nil {
+		return err
+	}
+	log.Printf("wrote %s", notePath)
+	return nil
 }
