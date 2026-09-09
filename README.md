@@ -1,4 +1,4 @@
-﻿# RemarkableMyscriptLocal — handwriting → Joplin on reMarkable 2
+# RemarkableMyscriptLocal — handwriting → Joplin on reMarkable 2
 
 Turn reMarkable 2 notebooks into **Joplin notes that sync with Joplin Cloud** (or WebDAV / Nextcloud / Joplin Server) **on the tablet itself**.
 
@@ -10,7 +10,7 @@ Pipeline:
 
 You do **not** need desktop Joplin open for the sync path. The tablet talks to Joplin Cloud (or your sync target) through jonobones.
 
-> **Wi-Fi required** on the tablet for install (`npm`) and for Joplin sync. USB is fine for SSH/deploy, but the tablet still needs internet.
+> **Wi-Fi required** for Joplin Cloud sync (and MyScript). Install can use the **offline npm Release asset** (no registry on the tablet). USB is fine for SSH/deploy.`n`nOffline bundle docs: [docs/offline-npm-bundle.md](docs/offline-npm-bundle.md).
 
 ## Quick install
 

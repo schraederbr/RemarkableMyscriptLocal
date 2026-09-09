@@ -85,7 +85,7 @@ Write-Host "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
 Write-Host "  2) MyScript APP_KEY and HMAC_KEY"
 Write-Host "  3) Joplin Cloud email + password"
 Write-Host "  4) Optional: Joplin E2EE master password"
-Write-Host "  5) Tablet on Wi-Fi with internet (npm install + Joplin Cloud sync)"
+Write-Host "  5) Tablet on Wi-Fi with internet (Joplin Cloud; npm only if offline bundle missing)"
 Write-Host "  See docs/install-checklist.md"
 Write-Host ""
 
@@ -409,6 +409,26 @@ if (-not (Test-Path $nodeTar) -or (Get-Item $nodeTar).Length -lt 1000000) {
   $ProgressPreference = $prevProgress
 }
 
+# Offline jonobones npm bundle (GitHub Release asset, or local dist/)
+$offlineName = "jonobones-rm2-npm-offline-0.1.5-joplin-3.7.1.tar.gz"
+$offlineLocal = Join-Path $RepoRoot "dist\$offlineName"
+if (-not (Test-Path $offlineLocal) -or (Get-Item $offlineLocal).Length -lt 1000000) {
+  Info "Fetching offline npm bundle from GitHub Releases…"
+  New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "dist") | Out-Null
+  $prevProgress = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
+  try {
+    & gh release download --repo schraederbr/RemarkableMyscriptLocal --pattern $offlineName --dir (Join-Path $RepoRoot "dist") --clobber
+  } catch {
+    Warn "gh release download failed — will try npm on-device (needs Wi-Fi): $_"
+  }
+  $ProgressPreference = $prevProgress
+}
+if (Test-Path $offlineLocal) {
+  Ok "Offline npm bundle ready: $offlineLocal"
+} else {
+  Warn "No offline npm bundle — on-device npm install will need Wi-Fi"
+}
+
 Info "Deploying files…"
 Invoke-Remote "mkdir -p /home/root/hwr/bin /home/root/hwr/conf /home/root/hwr/scripts /home/root/hwr/out /home/root/hwr/third_party/revcord /home/root/downloads"
 if (Test-Path $dist) {
@@ -431,6 +451,9 @@ if ($doInit -and (Test-Path $answersPath)) {
   Remove-Item $answersPath -Force -ErrorAction SilentlyContinue
 }
 Copy-ToRemote $nodeTar "/home/root/downloads/node-v$nodeVer-linux-armv7l.tar.xz"
+if (Test-Path $offlineLocal) {
+  Copy-ToRemote $offlineLocal "/home/root/downloads/$offlineName"
+}
 Invoke-Remote "chmod 0600 /home/root/hwr/conf/hwr.env /home/root/hwr/conf/jonobones-init-answers.txt 2>/dev/null; chmod 0755 /home/root/hwr/bin/rm2hwr /home/root/hwr/scripts/*.sh; true"
 Ok "Deployed"
 
