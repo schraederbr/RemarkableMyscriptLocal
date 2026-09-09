@@ -2,7 +2,13 @@
 # On-device installer: Node 20 armv7l + jonobones (+ Revcord sqlite3).
 # Prefers offline release tarball when present; otherwise npm (needs Wi-Fi).
 # Run as root on reMarkable 2. BusyBox-friendly.
+# Updates /tmp/rm2-install.status (phase=...) when the host nohup job is running.
 set -e
+
+STATUS="${STATUS:-/tmp/rm2-install.status}"
+rm2_phase() {
+  printf 'phase=%s\n' "$1" > "$STATUS"
+}
 
 NODE_VER="${NODE_VER:-20.20.2}"
 NODE_URL="${NODE_URL:-https://nodejs.org/dist/v${NODE_VER}/node-v${NODE_VER}-linux-armv7l.tar.xz}"
@@ -19,6 +25,7 @@ test "$(uname -m)" = "armv7l" || { echo "not armv7l — abort"; exit 1; }
 
 mkdir -p "$OPT" "$NPM_PREFIX" "$DOWNLOADS" "$HWR/bin" "$HWR/conf" "$HWR/scripts" "$HWR/out"
 
+rm2_phase node
 if command -v node >/dev/null 2>&1 && node -p "process.versions.napi" >/dev/null 2>&1; then
   echo "==> node already present: $(node -v) arch=$(node -p process.arch)"
 else
@@ -54,12 +61,18 @@ done
 
 if [ -n "$OFFLINE_TGZ" ]; then
   echo "==> install jonobones from offline tarball: $OFFLINE_TGZ"
+  rm2_phase jonobones-offline
   rm -rf "$NPM_PREFIX"
   mkdir -p "$NPM_PREFIX"
   TMP_OFF=/tmp/jonobones-offline-extract
   rm -rf "$TMP_OFF"
   mkdir -p "$TMP_OFF"
-  tar -xzf "$OFFLINE_TGZ" -C "$TMP_OFF"
+  # BusyBox tar often lacks -z; gunzip pipe is portable
+  if tar -tzf "$OFFLINE_TGZ" >/dev/null 2>&1; then
+    tar -xzf "$OFFLINE_TGZ" -C "$TMP_OFF"
+  else
+    gzip -dc "$OFFLINE_TGZ" | tar -x -C "$TMP_OFF"
+  fi
   if [ ! -d "$TMP_OFF/npm-global" ]; then
     echo "ERROR: offline tarball missing npm-global/"
     exit 1
@@ -71,10 +84,12 @@ if [ -n "$OFFLINE_TGZ" ]; then
   echo "offline jonobones tree installed"
 else
   echo "==> npm install jonobones (needs Wi-Fi/internet)"
+  rm2_phase jonobones-npm
   npm install -g jonobones --ignore-scripts --ignore-engines --no-fund --no-audit
 fi
 
 echo "==> ensure Revcord sqlite3 binary"
+rm2_phase sqlite
 cd "$DOWNLOADS"
 if [ -f /home/root/hwr/third_party/revcord/node_sqlite3.node ]; then
   cp /home/root/hwr/third_party/revcord/node_sqlite3.node "$DOWNLOADS/node_sqlite3.node"
@@ -105,6 +120,7 @@ if [ "$USED_OFFLINE" = "1" ]; then
 else
   echo "==> optional @joplin/lib 3.7.1 for Joplin Cloud"
   if [ "${BUMP_JOPLIN_LIB:-1}" = "1" ]; then
+    rm2_phase joplin-lib
     JB="$(npm root -g)/jonobones"
     (cd "$JB" && npm install @joplin/lib@3.7.1 --ignore-scripts --ignore-engines --no-fund --no-audit) || true
     find "$NPM_PREFIX" -type d -path '*/node_modules/sqlite3' 2>/dev/null | while read ROOT; do
