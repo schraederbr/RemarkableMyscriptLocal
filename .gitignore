@@ -9,8 +9,11 @@
 
 # Secrets — never commit real keys
 conf/hwr.env
+conf/install.secrets
+conf/jonobones-init-answers.txt
 *.env
-!conf/hwr.env.example
+!conf/*.env.example
+!conf/install.secrets.example
 
 # IDE / OS
 .idea/

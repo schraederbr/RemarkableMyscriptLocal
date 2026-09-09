@@ -1,13 +1,13 @@
-# rm2hwr — on-device MyScript HWR for reMarkable 2
+# rm2hwr â€” on-device MyScript HWR for reMarkable 2
 
 Go client that runs **on the reMarkable 2** (firmware 2.x): parse v5 `.rm` pages under xochitl, build a MyScript iink batch JSON body, POST with HMAC auth, and write plaintext under `/home/root/hwr/out/`.
 
-No Node, Python, or JVM — one static `linux/arm` (`GOARM=7`) binary.
+No Node, Python, or JVM â€” one static `linux/arm` (`GOARM=7`) binary.
 
 
 ## Quick install (RM2 stack)
 
-From a Windows PC that can SSH to the tablet (USB `10.11.99.1` or Wi‑Fi):
+From a Windows PC that can SSH to the tablet (USB `10.11.99.1` or Wiâ€‘Fi):
 
 ```powershell
 cd RemarkableMyscriptLocal
@@ -20,15 +20,15 @@ The installer walks you through:
 2. Cross-compile + deploy `rm2hwr`
 3. On-device **Node 20** + Revcord **sqlite3** drop-in + **jonobones**
 4. Deploy `joplin-upsert.js` and env template
-5. Printed checklist for MyScript keys + `jonobones init`
+5. Up-front credential collection + nohup on-device job (see docs/install-checklist.md)
 
-On-device only (already SSH’d as root):
+On-device only (already SSHâ€™d as root):
 
 ```bash
 sh /home/root/hwr/scripts/install-node-jonobones.sh
 ```
 
-Full port notes: [docs/jonobones-rm2.md](docs/jonobones-rm2.md) · HWR→Joplin: [docs/joplin-sync.md](docs/joplin-sync.md)
+Full port notes: [docs/jonobones-rm2.md](docs/jonobones-rm2.md) Â· HWRâ†’Joplin: [docs/joplin-sync.md](docs/joplin-sync.md)
 
 
 ## Device layout
@@ -36,7 +36,7 @@ Full port notes: [docs/jonobones-rm2.md](docs/jonobones-rm2.md) · HWR→Joplin:
 ```
 /home/root/hwr/
   bin/rm2hwr
-  conf/hwr.env          # mode 0600 — never commit real keys
+  conf/hwr.env          # mode 0600 â€” never commit real keys
   scripts/joplin-upsert.js
   out/<doc-uuid>/<page-uuid>.txt
   out/<doc-uuid>/<page-uuid>.json   # optional debug body
@@ -61,7 +61,7 @@ See `conf/hwr.env.example`. Copy to the tablet and `chmod 0600`.
 ### HMAC (critical)
 
 ```
-secret  = APP_KEY + HMAC_KEY     # string concatenation — NOT HMAC_KEY alone
+secret  = APP_KEY + HMAC_KEY     # string concatenation â€” NOT HMAC_KEY alone
 digest  = HMAC-SHA512(secret, raw_body_bytes)
 header  = hex(digest)            # lowercase
 ```
@@ -95,7 +95,7 @@ Pages whose output `.txt` is **newer** than the `.rm` are skipped. Empty pages w
 1. `Accept: text/plain`
 2. On empty body or `406`, retry `Accept: application/vnd.myscript.jiix` and take `.label`
 3. Backoff on `429` / `5xx`: 5s then 15s, max 3 attempts
-4. `401` / `403` → abort
+4. `401` / `403` â†’ abort
 
 ## Build
 
@@ -144,13 +144,13 @@ ssh root@10.11.99.1 'export PATH=/home/root/.npm-global/bin:/home/root/opt/node/
   /home/root/hwr/bin/rm2hwr --name "9-8" --joplin-upsert'
 ```
 
-Agent pipeline: RemarkableMyScript finishes HWR → SendToAgent Jonobones with `HANDOFF.json` fields → Jonobones appends/creates the Joplin note.
+Agent pipeline: RemarkableMyScript finishes HWR â†’ SendToAgent Jonobones with `HANDOFF.json` fields â†’ Jonobones appends/creates the Joplin note.
 
 ## Packages
 
 | Package | Role |
 |---------|------|
-| `internal/rmv5` | v5 `.rm` parser (LE); keeps brushes 12–17; drops highlighter/eraser |
+| `internal/rmv5` | v5 `.rm` parser (LE); keeps brushes 12â€“17; drops highlighter/eraser |
 | `internal/myscript` | batch JSON, HMAC-SHA512, HTTP client |
 | `internal/notebook` | xochitl discovery via `.metadata` / `.content` |
 | `internal/handoff` | NOTE.md + HANDOFF.json assembly |
@@ -162,7 +162,7 @@ v5 stroke header includes an extra `u32` unknown field (absent in v3). Each poin
 
 ## Fixtures
 
-`testdata/fixtures/` includes a real public sample page (`d94c0b46-…`.rm, notebook visibleName `9-8-26`) plus a tiny synthetic v5 file for fast unit tests.
+`testdata/fixtures/` includes a real public sample page (`d94c0b46-â€¦`.rm, notebook visibleName `9-8-26`) plus a tiny synthetic v5 file for fast unit tests.
 
 ## License
 
