@@ -19,17 +19,20 @@ func TestBuildFullTextTextMode(t *testing.T) {
 	if !strings.HasPrefix(got, "# 9-8-26\n") {
 		t.Fatalf("title missing: %q", got)
 	}
-	if !strings.Contains(got, "## Page 1\n\nhello") {
+	if !strings.Contains(got, "Remarkable:\nPage 1") {
+		t.Fatalf("Remarkable header missing: %q", got)
+	}
+	if !strings.Contains(got, "Remarkable:\nPage 1\n\nhello") {
 		t.Fatalf("page 1 missing: %q", got)
 	}
-	if !strings.Contains(got, "## Page 4\n\nworld") {
+	if !strings.Contains(got, "Remarkable:\nPage 4\n\nworld") {
 		t.Fatalf("page 4 missing: %q", got)
 	}
 	// SKIP with text is included in text mode
-	if !strings.Contains(got, "## Page 3\n\nignored") {
+	if !strings.Contains(got, "Remarkable:\nPage 3\n\nignored") {
 		t.Fatalf("skip with text missing: %q", got)
 	}
-	if strings.Contains(got, "## Page 2") {
+	if strings.Contains(got, "Remarkable:\nPage 2") {
 		t.Fatalf("empty leaked: %q", got)
 	}
 	if !strings.Contains(got, "\n\n---\n\n") {
@@ -56,7 +59,7 @@ func TestBuildFullTextSVGAndBoth(t *testing.T) {
 	if strings.Contains(svgOnly, "hello") {
 		t.Fatalf("svg mode should omit text: %q", svgOnly)
 	}
-	if strings.Contains(svgOnly, "## Page 3") {
+	if strings.Contains(svgOnly, "Remarkable:\nPage 3") {
 		t.Fatalf("empty page in svg: %q", svgOnly)
 	}
 
@@ -67,7 +70,7 @@ func TestBuildFullTextSVGAndBoth(t *testing.T) {
 	if !strings.Contains(both, "![Page 2](b.svg)") {
 		t.Fatalf("both page2: %q", both)
 	}
-	if strings.Contains(both, "## Page 3") {
+	if strings.Contains(both, "Remarkable:\nPage 3") {
 		t.Fatalf("empty in both: %q", both)
 	}
 }

@@ -259,7 +259,7 @@ async function buildBodyWithResources(base, token, payload, dir, mode) {
       lines.push(first ? '' : '');
       if (!first) lines.push('---', '');
       first = false;
-      lines.push('## Page ' + pageN, '');
+      lines.push('Remarkable:', 'Page ' + pageN, '');
       if (hasSvg) lines.push('![Page ' + pageN + '](' + path.basename(p.svgPath) + ')', '');
       if (text) lines.push(text);
     }
@@ -292,10 +292,25 @@ async function buildBodyWithResources(base, token, payload, dir, mode) {
     if (localRe.test(body)) {
       body = body.replace(localRe, embed);
     } else {
-      const heading = '## Page ' + pageN;
-      const idx = body.indexOf(heading);
+      // Prefer new plain lines: Remarkable:\nPage N  (or bare Page N); else legacy ## Page N
+      const remarkable = 'Remarkable:\nPage ' + pageN;
+      const barePage = 'Page ' + pageN;
+      const legacy = '## Page ' + pageN;
+      let insertAt = -1;
+      let idx = body.indexOf(remarkable);
       if (idx >= 0) {
-        const insertAt = idx + heading.length;
+        insertAt = idx + remarkable.length;
+      } else {
+        const reBare = new RegExp('(?:^|\n)(Page ' + pageN + ')(?=\n|$)');
+        const m = reBare.exec(body);
+        if (m) {
+          insertAt = m.index + (m[0].startsWith('\n') ? 1 : 0) + barePage.length;
+        } else {
+          idx = body.indexOf(legacy);
+          if (idx >= 0) insertAt = idx + legacy.length;
+        }
+      }
+      if (insertAt >= 0) {
         body = body.slice(0, insertAt) + '\n\n' + embed + body.slice(insertAt);
       } else {
         body += '\n\n' + embed + '\n';
@@ -321,7 +336,8 @@ function wrapHwrBlock(hwrBody, docUuid) {
 function looksLikeHwrOnly(body) {
   const t = String(body || '').trim();
   if (!t) return true;
-  if (/^#\s/.test(t) && /##\s+Page\s+\d+/.test(t)) return true;
+  // Legacy ## Page N headings, or new plain Remarkable: / Page N lines
+  if (/^#\s/.test(t) && (/##\s+Page\s+\d+/.test(t) || /(?:^|\n)Remarkable:\s*\nPage\s+\d+/.test(t))) return true;
   const m = t.match(OLD_SEP_RE);
   if (m) {
     const before = t.slice(0, t.indexOf(m[0])).trim();

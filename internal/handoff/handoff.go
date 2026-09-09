@@ -63,7 +63,8 @@ func BuildFullText(title string, pages []Page, mode string) string {
 		}
 		first = false
 		pageN := p.Index + 1
-		b.WriteString(fmt.Sprintf("## Page %d\n\n", pageN))
+		b.WriteString("Remarkable:\n")
+		b.WriteString(fmt.Sprintf("Page %d\n\n", pageN))
 		if hasSVG {
 			// Use basename so upsert can rewrite ![Page N](file.svg) → :/id
 			name := filepath.Base(p.SvgPath)
