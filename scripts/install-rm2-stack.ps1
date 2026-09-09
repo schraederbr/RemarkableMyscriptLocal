@@ -11,6 +11,7 @@
     - reMarkable SSH password (auto-installs your PC SSH key once)
     - MyScript APP_KEY (HMAC_KEY optional); https://developer.myscript.com/
     - Joplin upload mode (text / SVG / both; default both)
+    - Periodic sync interval hours (default 6; 0 disables cron)
     - Joplin Cloud email + password (or other sync target fields)
     - Optional E2EE master password
 #>
@@ -85,9 +86,10 @@ Write-Host "What this installer will ask for (have these ready):"
 Write-Host "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
 Write-Host "  2) MyScript APP_KEY (HMAC_KEY optional) - https://developer.myscript.com/"
 Write-Host "  3) Joplin upload mode: text / SVG / both (default both)"
-Write-Host "  4) Joplin Cloud email + password"
-Write-Host "  5) Optional: Joplin E2EE master password"
-Write-Host "  6) Tablet on Wi-Fi with internet (Joplin Cloud; npm only if offline bundle missing)"
+Write-Host "  4) Periodic sync interval hours (default 6; 0=disable cron)"
+Write-Host "  5) Joplin Cloud email + password"
+Write-Host "  6) Optional: Joplin E2EE master password"
+Write-Host "  7) Tablet on Wi-Fi with internet (Joplin Cloud; npm only if offline bundle missing)"
 Write-Host "  See docs/install-checklist.md"
 Write-Host ""
 
@@ -163,6 +165,19 @@ if ($uploadMode -notin @("text","svg","both")) {
   }
 }
 
+$syncIntervalHours = if ($sec["SYNC_INTERVAL_HOURS"]) { $sec["SYNC_INTERVAL_HOURS"].Trim() } else { "" }
+if ($syncIntervalHours -notmatch '^\d+$') {
+  if ($NonInteractive) {
+    $syncIntervalHours = "6"
+  } else {
+    Write-Host ""
+    Write-Host "How often should the tablet auto-sync recent notebooks to Joplin?"
+    Write-Host "  Enter hours between runs (default 6). Use 0 to skip installing cron."
+    $syncIntervalHours = Ask "SYNC_INTERVAL_HOURS" "6"
+    if ($syncIntervalHours -notmatch '^\d+$') { $syncIntervalHours = "6" }
+  }
+}
+
 $syncTarget = if ($sec["SYNC_TARGET"]) { $sec["SYNC_TARGET"] } else { "joplinCloud" }
 if (-not $NonInteractive -and -not $sec["SYNC_TARGET"]) {
   $syncTarget = Ask "Sync target (joplinCloud/webdav/nextcloud/joplinServer)" "joplinCloud"
@@ -215,6 +230,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "conf") | Out-Nul
   "HMAC_KEY=$hmacKey"
   "LANG=$lang"
   "UPLOAD_MODE=$uploadMode"
+  "SYNC_INTERVAL_HOURS=$syncIntervalHours"
   "SYNC_TARGET=$syncTarget"
   "JOPLIN_EMAIL=$joplinEmail"
   "JOPLIN_PASSWORD=$joplinPass"
@@ -233,6 +249,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "conf") | Out-Nul
   "CONTENT_TYPE=Text"
   "API_URL=https://cloud.myscript.com/api/v4.0/iink/batch"
   "UPLOAD_MODE=$uploadMode"
+  "SYNC_INTERVAL_HOURS=$syncIntervalHours"
 ) | Set-Content -Encoding utf8 $localHwr
 Ok "Saved conf/install.secrets + conf/hwr.env (gitignored)"
 
@@ -462,11 +479,12 @@ if (Test-Path $offlineLocal) {
 }
 
 Info "Deploying filesâ€¦"
-Invoke-Remote "mkdir -p /home/root/hwr/bin /home/root/hwr/conf /home/root/hwr/scripts /home/root/hwr/out /home/root/hwr/third_party/revcord /home/root/downloads"
+Invoke-Remote "mkdir -p /home/root/hwr/bin /home/root/hwr/conf /home/root/hwr/scripts /home/root/hwr/out /home/root/hwr/state /home/root/hwr/third_party/revcord /home/root/downloads"
 if (Test-Path $dist) {
   Copy-ToRemote $dist "/home/root/hwr/bin/rm2hwr"
 }
 Copy-ToRemote (Join-Path $RepoRoot "scripts\joplin-upsert.js") "/home/root/hwr/scripts/joplin-upsert.js"
+Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\sync-recent.sh") "/home/root/hwr/scripts/sync-recent.sh"
 Copy-ToRemote (Join-Path $RepoRoot "third_party\revcord\node_sqlite3.node") "/home/root/hwr/third_party/revcord/node_sqlite3.node"
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\install-node-jonobones.sh") "/home/root/hwr/scripts/install-node-jonobones.sh"
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\jonobones-init-cloud.sh") "/home/root/hwr/scripts/jonobones-init-cloud.sh"
@@ -488,6 +506,34 @@ if (Test-Path $offlineLocal) {
 }
 Invoke-Remote "chmod 0600 /home/root/hwr/conf/hwr.env /home/root/hwr/conf/jonobones-init-answers.txt 2>/dev/null; chmod 0755 /home/root/hwr/bin/rm2hwr /home/root/hwr/scripts/*.sh; true"
 Ok "Deployed"
+
+Info "Installing / updating BusyBox crontab for sync-recent (interval=$syncIntervalHours h)…"
+# Flatten to one remote command via bash -c is risky on BusyBox ash; use a temp script.
+$cronLocal = Join-Path $env:TEMP "rm2-install-cron.sh"
+@(
+  '#!/bin/sh'
+  'set -e'
+  'PATH=/home/root/.npm-global/bin:/home/root/opt/node/bin:/home/root/hwr/bin:/usr/bin:/bin'
+  'HWR=/home/root/hwr'
+  'MARK="# rm2hwr-sync-recent"'
+  'TMP=/tmp/rm2-crontab.new'
+  'crontab -l 2>/dev/null | grep -v sync-recent.sh | grep -v "rm2hwr-sync-recent" > "$TMP" || true'
+  "HOURS=$syncIntervalHours"
+  'if [ -n "$HOURS" ] && [ "$HOURS" -gt 0 ] 2>/dev/null; then'
+  '  echo "$MARK every ${HOURS}h" >> "$TMP"'
+  '  echo "17 */$HOURS * * * $HWR/scripts/sync-recent.sh >> /tmp/hwr-sync-recent.log 2>&1" >> "$TMP"'
+  '  crontab "$TMP"'
+  '  echo "crontab installed interval=$HOURS"'
+  'else'
+  '  if [ -s "$TMP" ]; then crontab "$TMP"; else crontab -r 2>/dev/null || true; fi'
+  '  echo "crontab sync-recent disabled (SYNC_INTERVAL_HOURS=0)"'
+  'fi'
+  'rm -f "$TMP"'
+  'chmod 0755 /home/root/hwr/scripts/sync-recent.sh'
+) | Set-Content -Encoding ascii $cronLocal
+Copy-ToRemote $cronLocal "/tmp/rm2-install-cron.sh"
+Invoke-Remote "chmod 0755 /tmp/rm2-install-cron.sh; sh /tmp/rm2-install-cron.sh; rm -f /tmp/rm2-install-cron.sh"
+Ok "Cron configured (SYNC_INTERVAL_HOURS=$syncIntervalHours)"
 
 if ($SkipJonobones) {
   Ok "SkipJonobones set â€” done after deploy"
@@ -585,3 +631,6 @@ Ok "Installer finished"
 Write-Host "Logs on tablet: /tmp/rm2-install.log  /tmp/jonobones-start.log"
 Write-Host "MyScript env:   /home/root/hwr/conf/hwr.env"
 Write-Host "API token env:  /home/root/hwr/conf/jonobones.env"
+Write-Host "Sync script:    /home/root/hwr/scripts/sync-recent.sh"
+Write-Host "Sync state:     /home/root/hwr/state/<doc-uuid>.json"
+Write-Host "Cron interval:  $syncIntervalHours h (0=disabled). Change SYNC_INTERVAL_HOURS in hwr.env + re-run installer, or crontab -e on tablet."

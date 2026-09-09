@@ -30,7 +30,7 @@ SVGs are ink-bbox + ~40px padding at 1:1 pixel size (no downscale). White backgr
 ## Title matching
 
 `title` is the reMarkable `visibleName` from xochitl `.metadata` (e.g. `9-8-26`).
-Joplin upsert uses **exact** title match: append if a note exists, otherwise create.
+Joplin upsert uses **exact** title match: **replace** the marked HWR block if a note exists, otherwise create.
 
 ## HANDOFF.json schema
 
@@ -56,7 +56,7 @@ When mode is `svg` or `both`, `joplin-upsert.js`:
 1. Reads each page `svgPath` under the doc out dir
 2. `POST {JONOBONES_URL}/resources` multipart (`data` = file, `props` = `{"title":"Page N — <title>.svg"}`)
 3. Rewrites `![Page N](file.svg)` → `![Page N](:/RESOURCE_ID)` in the note body
-4. Creates/appends the note as today, then triggers sync
+4. Creates the note (or replaces the `<!-- rm2hwr:begin -->`…`<!-- rm2hwr:end -->` block) then triggers sync
 
 Missing SVG files log a warning and are skipped. Mode `text` skips resource upload entirely.
 
@@ -78,4 +78,31 @@ rm2hwr --name "9-8" --joplin-upsert
 
 Optional env: `JONOBONES_URL`, `JONOBONES_TOKEN`, `JONOBONES_PARENT_ID`, `JONOBONES_PROFILE`, `UPLOAD_MODE`.
 
-Append separator includes an HTML comment with UTC timestamp and doc UUID so repeats are visible in Joplin history.
+### Replace markers (not forever-append)
+
+`joplin-upsert.js` wraps HWR markdown in:
+
+```
+<!-- rm2hwr:begin -->
+<!-- rm2hwr:meta ts=… doc=… -->
+…HWR body…
+<!-- rm2hwr:end -->
+```
+
+- **Update:** replaces everything between begin/end (preserves user content outside).
+- **Legacy:** migrates old `<!-- rm2hwr … -->` append separators into a single marked block.
+- **Pure prior HWR body:** overwrites with the new marked block.
+- Creates always write the marked block.
+
+### Periodic sync (`sync-recent.sh`)
+
+On-device cron (default every **6** hours) runs `/home/root/hwr/scripts/sync-recent.sh`:
+
+1. Finds `DocumentType` notebooks with `lastModified` in the last 30 days
+2. SHA-256 + mtime each `.rm` page; skips if `/home/root/hwr/state/<doc-uuid>.json` matches
+3. Else `rm2hwr --uuid … --joplin-upsert` (`UPLOAD_MODE` from `hwr.env`, default **both**)
+4. Writes state sidecar **only on success** (`lastUploadedAt`, optional `joplinNoteId`, per-page hashes)
+
+Change interval: `SYNC_INTERVAL_HOURS` in `hwr.env` + re-run installer, or `crontab -e` on the tablet.  
+Disable: set `SYNC_INTERVAL_HOURS=0` and re-run installer, or remove the `sync-recent.sh` crontab line.
+

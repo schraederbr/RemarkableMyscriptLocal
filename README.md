@@ -6,7 +6,7 @@ Pipeline:
 
 1. **`rm2hwr`** (Go, on-device) reads xochitl `.rm` pages → MyScript HWR and/or content-fit SVGs → `NOTE.md` + `HANDOFF.json`
 2. **`jonobones`** (on-device Joplin-compatible sync daemon) keeps a local Joplin vault and **syncs directly with your Joplin account**
-3. **`joplin-upsert`** (or `rm2hwr --joplin-upsert`) creates/appends the note by **exact notebook title** (`visibleName`), then jonobones syncs it upstream
+3. **`joplin-upsert`** (or `rm2hwr --joplin-upsert`) creates/updates the note by **exact notebook title** (`visibleName`), **replacing** the marked HWR section (not forever-append), then jonobones syncs it upstream
 
 You do **not** need desktop Joplin open for the sync path. The tablet talks to Joplin Cloud (or your sync target) through jonobones.
 
@@ -26,6 +26,7 @@ Have ready (see [docs/install-checklist.md](docs/install-checklist.md)):
 - reMarkable SSH password (installer installs your PC SSH key once — no manual key setup)
 - MyScript `APP_KEY` (optional `HMAC_KEY`) from [developer.myscript.com](https://developer.myscript.com/)
 - Joplin upload mode: text / SVG / both (installer default: both)
+- Periodic sync interval hours (installer default: **6**; `0` disables cron)
 - Joplin Cloud email + password (or another sync target)
 - Optional E2EE master password
 - **Tablet on Wi-Fi with internet**
@@ -48,9 +49,11 @@ node /home/root/hwr/scripts/joplin-upsert.js /home/root/hwr/out/<doc-uuid>
 jonobones sync
 ```
 
-Matching rule: **exact title** = reMarkable `visibleName`. Existing Joplin note → append; missing → create.
+Matching rule: **exact title** = reMarkable `visibleName`. Existing Joplin note → **replace** `<!-- rm2hwr:begin -->`…`<!-- rm2hwr:end -->` block (preserves content outside); missing → create with markers.
 
-Handoff details: [docs/joplin-sync.md](docs/joplin-sync.md) · RM2 port notes: [docs/jonobones-rm2.md](docs/jonobones-rm2.md)
+Manual one-shot is above. **Automatic:** BusyBox cron runs `sync-recent.sh` every `SYNC_INTERVAL_HOURS` (default 6): last-30-day notebooks, skip unchanged pages via state sidecars, else `rm2hwr --joplin-upsert`.
+
+Handoff / replace markers / cron: [docs/joplin-sync.md](docs/joplin-sync.md) · RM2 port notes: [docs/jonobones-rm2.md](docs/jonobones-rm2.md)
 
 ## What runs on the tablet
 
@@ -66,9 +69,11 @@ Handoff details: [docs/joplin-sync.md](docs/joplin-sync.md) · RM2 port notes: [
 ```
 /home/root/hwr/
   bin/rm2hwr
-  conf/hwr.env              # MyScript keys (0600)
+  conf/hwr.env              # MyScript keys + UPLOAD_MODE + SYNC_INTERVAL_HOURS (0600)
   conf/jonobones.env        # API token for upsert (written by installer)
   scripts/joplin-upsert.js
+  scripts/sync-recent.sh    # cron: recent notebooks → HWR → Joplin
+  state/<doc-uuid>.json     # lastUploadedAt + per-page sha256/mtime
   out/<doc-uuid>/NOTE.md
   out/<doc-uuid>/HANDOFF.json
   out/<doc-uuid>/<page>.txt|.svg
@@ -86,6 +91,7 @@ LANG=en_US
 CONTENT_TYPE=Text
 API_URL=https://cloud.myscript.com/api/v4.0/iink/batch
 UPLOAD_MODE=both  # text | svg | both (unset → text for old installs)
+SYNC_INTERVAL_HOURS=6  # cron for sync-recent.sh; 0 disables
 ```
 
 HMAC: `secret = APP_KEY + HMAC_KEY` (concatenation; `HMAC_KEY` may be empty), then HMAC-SHA512 over the raw body; headers `applicationKey` + `hmac`.

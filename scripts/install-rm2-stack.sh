@@ -21,10 +21,11 @@ if [[ ! -f "$ROOT/conf/install.secrets" || ! -f "$ROOT/conf/hwr.env" ]]; then
   echo "ERROR: create conf/install.secrets and conf/hwr.env first (or run scripts/install-rm2-stack.ps1)."
   exit 1
 fi
-ssh "$USER@$HOST" 'mkdir -p /home/root/hwr/scripts /home/root/hwr/bin /home/root/hwr/conf /home/root/hwr/out /home/root/hwr/third_party/revcord /home/root/downloads'
+ssh "$USER@$HOST" 'mkdir -p /home/root/hwr/scripts /home/root/hwr/bin /home/root/hwr/conf /home/root/hwr/out /home/root/hwr/state /home/root/hwr/third_party/revcord /home/root/downloads'
 scp "$ROOT/scripts/on-device/install-node-jonobones.sh" \
     "$ROOT/scripts/on-device/jonobones-init-cloud.sh" \
     "$ROOT/scripts/on-device/install-job.sh" \
+    "$ROOT/scripts/on-device/sync-recent.sh" \
     "$ROOT/scripts/joplin-upsert.js" \
     "$USER@$HOST:/home/root/hwr/scripts/"
 scp "$ROOT/third_party/revcord/node_sqlite3.node" "$USER@$HOST:/home/root/hwr/third_party/revcord/node_sqlite3.node"
@@ -39,6 +40,26 @@ if [[ -f "$ROOT/dist/rm2hwr-linux-armv7" ]]; then
   ssh "$USER@$HOST" 'chmod 0755 /home/root/hwr/bin/rm2hwr'
 fi
 ssh "$USER@$HOST" 'chmod +x /home/root/hwr/scripts/*.sh; chmod 0600 /home/root/hwr/conf/hwr.env; rm -f /tmp/rm2-install.status; : > /tmp/rm2-install.log; nohup sh /home/root/hwr/scripts/install-job.sh >/tmp/rm2-install.nohup.out 2>&1 & echo started'
+
+# Install sync-recent cron from SYNC_INTERVAL_HOURS in hwr.env (default 6; 0 disables)
+HOURS=$(grep -E '^SYNC_INTERVAL_HOURS=' "$ROOT/conf/hwr.env" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '\r' || true)
+HOURS=${HOURS:-6}
+ssh "$USER@$HOST" "HOURS='$HOURS' sh -s" <<'CRON'
+set -e
+TMP=/tmp/rm2-crontab.new
+crontab -l 2>/dev/null | grep -v sync-recent.sh | grep -v rm2hwr-sync-recent > "$TMP" || true
+if [ -n "$HOURS" ] && [ "$HOURS" -gt 0 ] 2>/dev/null; then
+  echo "# rm2hwr-sync-recent every ${HOURS}h" >> "$TMP"
+  echo "17 */$HOURS * * * /home/root/hwr/scripts/sync-recent.sh >> /tmp/hwr-sync-recent.log 2>&1" >> "$TMP"
+  crontab "$TMP"
+  echo "crontab installed interval=$HOURS"
+else
+  if [ -s "$TMP" ]; then crontab "$TMP"; else crontab -r 2>/dev/null || true; fi
+  echo "crontab sync-recent disabled"
+fi
+rm -f "$TMP"
+chmod 0755 /home/root/hwr/scripts/sync-recent.sh
+CRON
 
 echo "==> Job running on tablet. Heartbeat every ~60s (Ctrl+C here is safe — job keeps running)."
 deadline=$((SECONDS + 6*3600))
