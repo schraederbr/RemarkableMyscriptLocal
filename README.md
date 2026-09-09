@@ -4,6 +4,33 @@ Go client that runs **on the reMarkable 2** (firmware 2.x): parse v5 `.rm` pages
 
 No Node, Python, or JVM — one static `linux/arm` (`GOARM=7`) binary.
 
+
+## Quick install (RM2 stack)
+
+From a Windows PC that can SSH to the tablet (USB `10.11.99.1` or Wi‑Fi):
+
+```powershell
+cd RemarkableMyscriptLocal
+powershell -NoProfile -File .\scripts\install-rm2-stack.ps1
+```
+
+The installer walks you through:
+
+1. SSH check (armv7l)
+2. Cross-compile + deploy `rm2hwr`
+3. On-device **Node 20** + Revcord **sqlite3** drop-in + **jonobones**
+4. Deploy `joplin-upsert.js` and env template
+5. Printed checklist for MyScript keys + `jonobones init`
+
+On-device only (already SSH’d as root):
+
+```bash
+sh /home/root/hwr/scripts/install-node-jonobones.sh
+```
+
+Full port notes: [docs/jonobones-rm2.md](docs/jonobones-rm2.md) · HWR→Joplin: [docs/joplin-sync.md](docs/joplin-sync.md)
+
+
 ## Device layout
 
 ```
