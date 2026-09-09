@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Host-side installer for rm2hwr + jonobones on reMarkable 2.
 
@@ -494,29 +494,92 @@ if ($SkipJonobones) {
   exit 0
 }
 
-Info "Starting on-device install job under nohup (survives SSH drop)â€¦"
+function Get-RmInstallPhase([string]$statusText) {
+  $t = ("$statusText").Trim()
+  if ([string]::IsNullOrWhiteSpace($t)) { return "pending" }
+  foreach ($line in ($t -split "`r?`n")) {
+    $line = $line.Trim()
+    if ($line -match '^phase=(.+)$') { return $Matches[1].Trim() }
+    if ($line -in @("ok", "fail", "running", "pending")) { return $line }
+  }
+  return $t
+}
+
+function Write-RmInstallHeartbeat([TimeSpan]$elapsed) {
+  # BusyBox-safe one-shot snapshot for ~60s host progress lines (no here-strings)
+  $remote = @(
+    'phase=$(sed -n ''s/^phase=//p'' /tmp/rm2-install.status 2>/dev/null | head -n1)'
+    '[ -n "$phase" ] || phase=pending'
+    'du_k=$(du -sk /home/root/.config/jonobones 2>/dev/null | awk ''{print $1}'')'
+    '[ -n "$du_k" ] || du_k=0'
+    'free_k=$(df -k /home 2>/dev/null | tail -n1 | awk ''{print $4}'')'
+    '[ -n "$free_k" ] || free_k=?'
+    'echo "PHASE=$phase"'
+    'echo "DU_K=$du_k"'
+    'echo "FREE_K=$free_k"'
+    'echo "----LOG----"'
+    'tail -n 12 /tmp/rm2-install.log 2>/dev/null || true'
+  ) -join "; "
+  $snap = Invoke-RemoteCapture $remote
+  $phase = "pending"; $duK = "0"; $freeK = "?"
+  $logLines = New-Object System.Collections.Generic.List[string]
+  $inLog = $false
+  foreach ($line in ($snap -split "`r?`n")) {
+    if ($inLog) { [void]$logLines.Add($line); continue }
+    if ($line -eq "----LOG----") { $inLog = $true; continue }
+    if ($line -match '^PHASE=(.+)$') { $phase = $Matches[1]; continue }
+    if ($line -match '^DU_K=(.+)$') { $duK = $Matches[1]; continue }
+    if ($line -match '^FREE_K=(.+)$') { $freeK = $Matches[1]; continue }
+  }
+  $mins = [math]::Floor($elapsed.TotalMinutes)
+  $secs = $elapsed.Seconds
+  $duMb = if ($duK -match '^\d+$') { "{0:N1}M" -f ([double]$duK / 1024.0) } else { $duK }
+  $freeMb = if ($freeK -match '^\d+$') { "{0:N1}M" -f ([double]$freeK / 1024.0) } else { $freeK }
+  Write-Host ""
+  Write-Host ("-- heartbeat  phase={0}  elapsed={1}m{2:D2}s  jonobones={3}  /home free={4}" -f $phase, $mins, $secs, $duMb, $freeMb) -ForegroundColor Cyan
+  if ($logLines.Count -gt 0) {
+    Write-Host "   log tail:"
+    foreach ($l in $logLines) {
+      if (-not [string]::IsNullOrWhiteSpace($l)) { Write-Host ("   | {0}" -f $l) }
+    }
+  }
+}
+
+Info "Starting on-device install job under nohup (survives SSH drop)..."
 # Clear prior status, start detached
 Invoke-Remote "rm -f /tmp/rm2-install.status; : > /tmp/rm2-install.log; if command -v nohup >/dev/null 2>&1; then nohup sh /home/root/hwr/scripts/install-job.sh >/tmp/rm2-install.nohup.out 2>&1 & else sh /home/root/hwr/scripts/install-job.sh >/tmp/rm2-install.log 2>&1 & fi; echo started"
 
-Info "Polling /tmp/rm2-install.status (Ctrl+C here is safe â€” job keeps running on tablet)â€¦"
+Info "Polling /tmp/rm2-install.status (~60s heartbeat; Ctrl+C here is safe — job keeps running on tablet)..."
 $deadline = (Get-Date).AddHours(6)
+$pollStarted = Get-Date
+$lastHeartbeat = [datetime]::MinValue
+$phase = "pending"
 while ((Get-Date) -lt $deadline) {
-  Start-Sleep -Seconds 8
+  Start-Sleep -Seconds 5
   try {
-    $st = Invoke-RemoteCapture "cat /tmp/rm2-install.status 2>/dev/null || echo pending"
+    $st = Invoke-RemoteCapture "cat /tmp/rm2-install.status 2>/dev/null || echo phase=pending"
   } catch {
-    Warn "SSH blip while polling â€” retrying (on-device job still running)"
+    Warn "SSH blip while polling — retrying (on-device job still running)"
     continue
   }
-  if ($st -eq "ok") { Ok "On-device job finished successfully"; break }
-  if ($st -eq "fail") {
-    Warn "On-device job failed â€” last log lines:"
+  $phase = Get-RmInstallPhase $st
+  if ($phase -eq "ok") { Ok "On-device job finished successfully"; break }
+  if ($phase -eq "fail") {
+    Warn "On-device job failed — last log lines:"
     Invoke-Remote "tail -n 40 /tmp/rm2-install.log" | Out-Host
     throw "install-job failed"
   }
-  Write-Host ("  status={0}  {1:u}" -f $st, (Get-Date))
+  $elapsed = (Get-Date) - $pollStarted
+  if (((Get-Date) - $lastHeartbeat).TotalSeconds -ge 60) {
+    $lastHeartbeat = Get-Date
+    try {
+      Write-RmInstallHeartbeat $elapsed
+    } catch {
+      Warn "Heartbeat SSH blip — retrying next cycle (on-device job still running)"
+    }
+  }
 }
-if ($st -ne "ok") { throw "Timed out waiting for install-job" }
+if ($phase -ne "ok") { throw "Timed out waiting for install-job" }
 
 Ok "Installer finished"
 Write-Host "Logs on tablet: /tmp/rm2-install.log  /tmp/jonobones-start.log"

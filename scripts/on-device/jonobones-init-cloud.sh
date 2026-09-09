@@ -11,8 +11,11 @@ META="$HWR/conf/install.meta"
 
 SKIP=0
 if [ -f "$META" ]; then
+  # Windows hosts may write CRLF; strip before sourcing
+  META_CLEAN=/tmp/rm2-install.meta.clean
+  tr -d '\r' < "$META" > "$META_CLEAN"
   # shellcheck disable=SC1090
-  . "$META"
+  . "$META_CLEAN"
 fi
 SKIP="${SKIP_JONOBONES_INIT:-$SKIP}"
 
@@ -26,9 +29,14 @@ if [ ! -s "$ANSWERS" ]; then
   exit 1
 fi
 
+# Strip CRLF from Windows-written answers (jonobones reads line-oriented)
+ANSWERS_CLEAN=/tmp/jonobones-init-answers.clean
+tr -d '\r' < "$ANSWERS" > "$ANSWERS_CLEAN"
+
 echo "==> jonobones init (scripted answers from $ANSWERS)"
 jonobones stop 2>/dev/null || true
-jonobones init < "$ANSWERS"
+jonobones init < "$ANSWERS_CLEAN"
+rm -f "$ANSWERS_CLEAN"
 
 if [ -f "$CONFIG" ]; then
   TOKEN=$(node -e "const fs=require('fs');const t=fs.readFileSync(process.argv[1],'utf8');const m=t.match(/\"token\"\\s*:\\s*\"([^\"]+)\"/);if(!m)process.exit(2);process.stdout.write(m[1])" "$CONFIG")
