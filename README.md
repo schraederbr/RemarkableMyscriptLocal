@@ -24,7 +24,7 @@ powershell -NoProfile -File .\scripts\install-rm2-stack.ps1
 Have ready (see [docs/install-checklist.md](docs/install-checklist.md)):
 
 - reMarkable SSH password (installer installs your PC SSH key once — no manual key setup)
-- MyScript `APP_KEY` + `HMAC_KEY`
+- MyScript `APP_KEY` (optional `HMAC_KEY`) from [developer.myscript.com](https://developer.myscript.com/)
 - Joplin Cloud email + password (or another sync target)
 - Optional E2EE master password
 - **Tablet on Wi-Fi with internet**
@@ -75,15 +75,17 @@ Handoff details: [docs/joplin-sync.md](docs/joplin-sync.md) · RM2 port notes: [
 
 ### MyScript `hwr.env`
 
+Sign up / keys: [developer.myscript.com](https://developer.myscript.com/)
+
 ```
-APP_KEY=
-HMAC_KEY=
+APP_KEY=          # required
+HMAC_KEY=         # optional
 LANG=en_US
 CONTENT_TYPE=Text
 API_URL=https://cloud.myscript.com/api/v4.0/iink/batch
 ```
 
-HMAC: `secret = APP_KEY + HMAC_KEY` (concatenation), then HMAC-SHA512 over the raw body; headers `applicationKey` + `hmac`.
+HMAC: `secret = APP_KEY + HMAC_KEY` (concatenation; `HMAC_KEY` may be empty), then HMAC-SHA512 over the raw body; headers `applicationKey` + `hmac`.
 
 ## CLI (`rm2hwr`)
 

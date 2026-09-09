@@ -8,7 +8,7 @@ import (
 
 // SignBody computes the MyScript batch HMAC:
 //
-//	secret  = APP_KEY + HMAC_KEY   (string concatenation — NOT HMAC_KEY alone)
+//	secret  = APP_KEY + HMAC_KEY   (concatenation; HMAC_KEY may be empty)
 //	digest  = HMAC-SHA512(secret, rawBodyBytes)
 //	header  = hex-lowercase encoding of digest
 func SignBody(appKey, hmacKey string, body []byte) string {

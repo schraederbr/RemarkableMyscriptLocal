@@ -38,3 +38,13 @@ func TestSignBodyDemoJSON(t *testing.T) {
 		t.Fatalf("got %s\nwant %s", got, want)
 	}
 }
+
+func TestSignBodyEmptyHMACKey(t *testing.T) {
+	got := SignBody("onlyApp", "", []byte("payload"))
+	if got == "" || len(got) != 128 {
+		t.Fatalf("empty HMAC_KEY should yield 128-hex digest, got %q", got)
+	}
+	if got == SignBody("onlyApp", "x", []byte("payload")) {
+		t.Fatal("empty HMAC_KEY digest must differ from non-empty")
+	}
+}

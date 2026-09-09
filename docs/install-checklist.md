@@ -9,8 +9,8 @@ Gather these **before** running `scripts/install-rm2-stack.ps1`. The installer a
 | **Tablet Wi-Fi + internet** | Tablet network settings | Joplin Cloud sync + MyScript API (npm only if the offline Release asset is missing) |
 | Tablet reachability for SSH | USB → `10.11.99.1`, or Wi‑Fi IP | `ssh` / `scp` (USB OK for deploy; Wi-Fi still required for the steps above) |
 | reMarkable SSH password | Settings → Help → Copyrights and licenses | One-time PC SSH key install |
-| MyScript `APP_KEY` | [developer.myscript.com](https://developer.myscript.com/) | HWR |
-| MyScript `HMAC_KEY` | Same application | HWR |
+| MyScript account + `APP_KEY` | [Sign up / console](https://developer.myscript.com/) | HWR (required) |
+| MyScript `HMAC_KEY` | Same app (optional) | Blank OK if HMAC disabled |
 | Joplin Cloud email + password | [joplincloud.com](https://joplincloud.com/) | **Direct sync** via jonobones on the tablet |
 
 WebDAV / Nextcloud / Joplin Server: use URL + username + password instead (`SYNC_TARGET` in `conf/install.secrets.example`).

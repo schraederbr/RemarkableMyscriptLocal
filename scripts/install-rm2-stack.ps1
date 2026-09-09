@@ -82,7 +82,7 @@ Info "Repo: $RepoRoot"
 Write-Host ""
 Write-Host "What this installer will ask for (have these ready):"
 Write-Host "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
-Write-Host "  2) MyScript APP_KEY and HMAC_KEY"
+Write-Host "  2) MyScript APP_KEY (HMAC_KEY optional) — https://developer.myscript.com/"
 Write-Host "  3) Joplin Cloud email + password"
 Write-Host "  4) Optional: Joplin E2EE master password"
 Write-Host "  5) Tablet on Wi-Fi with internet (Joplin Cloud; npm only if offline bundle missing)"
@@ -130,8 +130,17 @@ if (-not $sshPassword) {
 $appKey = $sec["APP_KEY"]
 $hmacKey = $sec["HMAC_KEY"]
 $lang = if ($sec["LANG"]) { $sec["LANG"] } else { "en_US" }
-if (-not $appKey) { $appKey = Ask "MyScript APP_KEY" }
-if (-not $hmacKey) { $hmacKey = AskSecret "MyScript HMAC_KEY" }
+if (-not $appKey) {
+  Write-Host ""
+  Write-Host "MyScript Cloud — create a free app and copy keys:"
+  Write-Host "  https://developer.myscript.com/"
+  Write-Host ""
+  $appKey = Ask "MyScript APP_KEY"
+}
+if (-not $sec.ContainsKey("HMAC_KEY") -and -not $hmacKey) {
+  Write-Host "HMAC_KEY is optional (leave blank if HMAC is disabled in the MyScript dashboard)."
+  $hmacKey = Ask "MyScript HMAC_KEY (optional, blank OK)"
+}
 
 $syncTarget = if ($sec["SYNC_TARGET"]) { $sec["SYNC_TARGET"] } else { "joplinCloud" }
 if (-not $NonInteractive -and -not $sec["SYNC_TARGET"]) {

@@ -80,9 +80,11 @@ func NewClient(env *Env) *Client {
 // Accept: text/plain first; on empty body or 406, retry with
 // application/vnd.myscript.jiix and extract .label.
 func (c *Client) Recognize(body []byte) (string, error) {
-	if c.Env.AppKey == "" || c.Env.HMACKey == "" {
-		return "", fmt.Errorf("myscript: APP_KEY and HMAC_KEY are required")
+	if c.Env.AppKey == "" {
+		return "", fmt.Errorf("myscript: APP_KEY is required")
 	}
+	// HMAC_KEY may be empty (HMAC disabled in MyScript Cloud dashboard).
+	// SignBody still uses secret = APP_KEY + HMAC_KEY.
 	text, err := c.doWithAccept(body, "text/plain", false)
 	if err == nil && strings.TrimSpace(text) != "" {
 		return text, nil
