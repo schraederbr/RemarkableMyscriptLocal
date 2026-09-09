@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/schraederbr/RemarkableMyscriptLocal/internal/rmv5"
+	"github.com/schraederbr/RemarkableMyscriptLocal/internal/rmv6"
 )
 
 const pad = 40.0
@@ -15,9 +16,22 @@ const pad = 40.0
 // viewBox = ink bbox + padding; width/height = ceil(viewBox) at 1:1 (no downscale).
 // White background; black polylines with round caps; no page frame.
 //
-// stroke-width uses the mean of per-point Width values (firmware already folds
-// pressure into those). Falls back to the stroke-level Width (pen size /
-// thickness_scale) when no positive point widths exist.
+// Stroke width policy (aligned with modern rm→svg tools, not classic maxio polynomials):
+//
+//   - Prefer mean of per-point Width values already in page space. Firmware bakes
+//     pressure into those; v6 point-format v2 uint16 widths are decoded as /4 in
+//     rmv6 (rmscene stores width as float*4 / uint16*4; rmc formulas use width/4).
+//   - We emit one polyline per stroke (unlike rmc's per-segment widths), so the
+//     mean is the practical single-width approximation of rmc's point-width path.
+//   - Fallback when no positive point widths: stroke-level thickness_scale
+//     (Stroke.Width), with fineliner *1.8 like rmc Fineliner(base_width * 1.8).
+//
+// Citations:
+//   https://github.com/ricklupton/rmc/blob/main/src/rmc/exporters/writing_tools.py
+//   https://github.com/ricklupton/rmc/blob/main/src/rmc/exporters/svg.py
+//   https://github.com/ricklupton/rmscene/blob/main/src/rmscene/scene_stream.py
+//     (point_from_stream: v1 width=round(float*4); v2 width=uint16)
+// Classic maxio/rM2svg 32w²−116w+107 is legacy and intentionally not used.
 func Render(page *rmv5.Page) []byte {
 	if page == nil {
 		return nil
@@ -97,7 +111,7 @@ func Render(page *rmv5.Page) []byte {
 }
 
 // strokeWidth returns SVG user-unit stroke-width for one polyline.
-// Prefer mean per-point width (page-space); fall back to stroke.Width.
+// Prefer mean page-space per-point width; else thickness_scale with pen factor.
 func strokeWidth(s rmv5.Stroke) float64 {
 	var sum float64
 	n := 0
@@ -107,15 +121,28 @@ func strokeWidth(s rmv5.Stroke) float64 {
 			n++
 		}
 	}
-	sw := float64(s.Width)
+	var sw float64
 	if n > 0 {
 		sw = sum / float64(n)
+	} else {
+		sw = fallbackThickness(s)
 	}
 	if sw < 0.25 {
 		sw = 0.25
 	}
 	if sw > 24 {
 		sw = 24
+	}
+	return sw
+}
+
+// fallbackThickness mirrors rmc when point widths are missing:
+// fineliner uses thickness_scale * 1.8; other pens use raw thickness_scale.
+func fallbackThickness(s rmv5.Stroke) float64 {
+	sw := float64(s.Width)
+	switch s.Brush {
+	case rmv5.BrushFinelinerV5, rmv6.PenFinelinerV1: // 17 (== PenFinelinerV2), 4
+		sw *= 1.8
 	}
 	return sw
 }

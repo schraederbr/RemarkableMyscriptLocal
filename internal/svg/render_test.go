@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/schraederbr/RemarkableMyscriptLocal/internal/rmv5"
+	"github.com/schraederbr/RemarkableMyscriptLocal/internal/rmv6"
 )
 
 func TestRenderEmpty(t *testing.T) {
@@ -68,7 +69,7 @@ func TestRenderContentFit(t *testing.T) {
 func TestStrokeWidthUsesPointMean(t *testing.T) {
 	page := &rmv5.Page{Layers: []rmv5.Layer{{
 		Strokes: []rmv5.Stroke{{
-			Width: 2, // pen size — must NOT win over point widths
+			Width: 2, // pen size - must NOT win over point widths
 			Points: []rmv5.Point{
 				{X: 0, Y: 0, Width: 2},
 				{X: 10, Y: 0, Width: 4},
@@ -85,6 +86,7 @@ func TestStrokeWidthUsesPointMean(t *testing.T) {
 func TestStrokeWidthFallsBackToStrokeWidth(t *testing.T) {
 	page := &rmv5.Page{Layers: []rmv5.Layer{{
 		Strokes: []rmv5.Stroke{{
+			Brush: rmv5.BrushBallpointV5,
 			Width: 2.5,
 			Points: []rmv5.Point{
 				{X: 0, Y: 0},
@@ -95,5 +97,55 @@ func TestStrokeWidthFallsBackToStrokeWidth(t *testing.T) {
 	s := string(Render(page))
 	if !strings.Contains(s, `stroke-width="2.50"`) {
 		t.Fatalf("want stroke-level fallback 2.50: %s", s)
+	}
+}
+
+func TestStrokeWidthFinelinerFallbackUsesRmcFactor(t *testing.T) {
+	// rmc Fineliner: base_width * 1.8 when using thickness_scale
+	page := &rmv5.Page{Layers: []rmv5.Layer{{
+		Strokes: []rmv5.Stroke{{
+			Brush: rmv5.BrushFinelinerV5,
+			Width: 2,
+			Points: []rmv5.Point{
+				{X: 0, Y: 0},
+				{X: 10, Y: 0},
+			},
+		}},
+	}}}
+	s := string(Render(page))
+	if !strings.Contains(s, `stroke-width="3.60"`) {
+		t.Fatalf("want fineliner fallback 2*1.8=3.60: %s", s)
+	}
+
+	pageV1 := &rmv5.Page{Layers: []rmv5.Layer{{
+		Strokes: []rmv5.Stroke{{
+			Brush: rmv6.PenFinelinerV1,
+			Width: 2,
+			Points: []rmv5.Point{
+				{X: 0, Y: 0},
+				{X: 10, Y: 0},
+			},
+		}},
+	}}}
+	s2 := string(Render(pageV1))
+	if !strings.Contains(s2, `stroke-width="3.60"`) {
+		t.Fatalf("want v1 fineliner fallback 3.60: %s", s2)
+	}
+}
+
+func TestStrokeWidthPointMeanBeatsFinelinerFallback(t *testing.T) {
+	page := &rmv5.Page{Layers: []rmv5.Layer{{
+		Strokes: []rmv5.Stroke{{
+			Brush: rmv5.BrushFinelinerV5,
+			Width: 2,
+			Points: []rmv5.Point{
+				{X: 0, Y: 0, Width: 1.5},
+				{X: 10, Y: 0, Width: 1.5},
+			},
+		}},
+	}}}
+	s := string(Render(page))
+	if !strings.Contains(s, `stroke-width="1.50"`) {
+		t.Fatalf("point mean must win over fineliner*1.8: %s", s)
 	}
 }
