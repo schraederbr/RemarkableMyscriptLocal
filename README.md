@@ -4,7 +4,7 @@ Turn reMarkable 2 notebooks into **Joplin notes that sync with Joplin Cloud** (o
 
 Pipeline:
 
-1. **`rm2hwr`** (Go, on-device) reads xochitl `.rm` pages → MyScript HWR → `NOTE.md` + `HANDOFF.json`
+1. **`rm2hwr`** (Go, on-device) reads xochitl `.rm` pages → MyScript HWR and/or content-fit SVGs → `NOTE.md` + `HANDOFF.json`
 2. **`jonobones`** (on-device Joplin-compatible sync daemon) keeps a local Joplin vault and **syncs directly with your Joplin account**
 3. **`joplin-upsert`** (or `rm2hwr --joplin-upsert`) creates/appends the note by **exact notebook title** (`visibleName`), then jonobones syncs it upstream
 
@@ -25,6 +25,7 @@ Have ready (see [docs/install-checklist.md](docs/install-checklist.md)):
 
 - reMarkable SSH password (installer installs your PC SSH key once — no manual key setup)
 - MyScript `APP_KEY` (optional `HMAC_KEY`) from [developer.myscript.com](https://developer.myscript.com/)
+- Joplin upload mode: text / SVG / both (installer default: both)
 - Joplin Cloud email + password (or another sync target)
 - Optional E2EE master password
 - **Tablet on Wi-Fi with internet**
@@ -70,6 +71,7 @@ Handoff details: [docs/joplin-sync.md](docs/joplin-sync.md) · RM2 port notes: [
   scripts/joplin-upsert.js
   out/<doc-uuid>/NOTE.md
   out/<doc-uuid>/HANDOFF.json
+  out/<doc-uuid>/<page>.txt|.svg
 /home/root/.config/jonobones/default/   # jonobones profile + synced vault
 ```
 
@@ -83,6 +85,7 @@ HMAC_KEY=         # optional
 LANG=en_US
 CONTENT_TYPE=Text
 API_URL=https://cloud.myscript.com/api/v4.0/iink/batch
+UPLOAD_MODE=both  # text | svg | both (unset → text for old installs)
 ```
 
 HMAC: `secret = APP_KEY + HMAC_KEY` (concatenation; `HMAC_KEY` may be empty), then HMAC-SHA512 over the raw body; headers `applicationKey` + `hmac`.
@@ -92,6 +95,7 @@ HMAC: `secret = APP_KEY + HMAC_KEY` (concatenation; `HMAC_KEY` may be empty), th
 ```
 rm2hwr --all | --name SUBSTR | --uuid DOC
        [--page PAGE] [--dry-run] [--joplin-upsert]
+       [--upload-mode text|svg|both]
        [--xochitl DIR] [--outdir DIR] [--env FILE]
 ```
 

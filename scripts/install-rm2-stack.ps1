@@ -10,6 +10,7 @@
     - Tablet host (USB 10.11.99.1 or Wi-Fi IP)
     - reMarkable SSH password (auto-installs your PC SSH key once)
     - MyScript APP_KEY (HMAC_KEY optional); https://developer.myscript.com/
+    - Joplin upload mode (text / SVG / both; default both)
     - Joplin Cloud email + password (or other sync target fields)
     - Optional E2EE master password
 #>
@@ -82,10 +83,11 @@ Info "Repo: $RepoRoot"
 Write-Host ""
 Write-Host "What this installer will ask for (have these ready):"
 Write-Host "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
-Write-Host "  2) MyScript APP_KEY (HMAC_KEY optional) â€” https://developer.myscript.com/"
-Write-Host "  3) Joplin Cloud email + password"
-Write-Host "  4) Optional: Joplin E2EE master password"
-Write-Host "  5) Tablet on Wi-Fi with internet (Joplin Cloud; npm only if offline bundle missing)"
+Write-Host "  2) MyScript APP_KEY (HMAC_KEY optional) - https://developer.myscript.com/"
+Write-Host "  3) Joplin upload mode: text / SVG / both (default both)"
+Write-Host "  4) Joplin Cloud email + password"
+Write-Host "  5) Optional: Joplin E2EE master password"
+Write-Host "  6) Tablet on Wi-Fi with internet (Joplin Cloud; npm only if offline bundle missing)"
 Write-Host "  See docs/install-checklist.md"
 Write-Host ""
 
@@ -142,6 +144,25 @@ if (-not $sec.ContainsKey("HMAC_KEY") -and -not $hmacKey) {
   $hmacKey = Ask "MyScript HMAC_KEY (optional, blank OK)"
 }
 
+$uploadMode = if ($sec["UPLOAD_MODE"]) { $sec["UPLOAD_MODE"].Trim().ToLowerInvariant() } else { "" }
+if ($uploadMode -notin @("text","svg","both")) {
+  if ($NonInteractive) {
+    $uploadMode = "both"
+  } else {
+    Write-Host ""
+    Write-Host "What should rm2hwr upload to Joplin?"
+    Write-Host "  1) MyScript text only"
+    Write-Host "  2) Page SVG images only"
+    Write-Host "  3) Both text and SVG  [default]"
+    $umChoice = Ask "Choice" "3"
+    switch ($umChoice) {
+      "1" { $uploadMode = "text" }
+      "2" { $uploadMode = "svg" }
+      default { $uploadMode = "both" }
+    }
+  }
+}
+
 $syncTarget = if ($sec["SYNC_TARGET"]) { $sec["SYNC_TARGET"] } else { "joplinCloud" }
 if (-not $NonInteractive -and -not $sec["SYNC_TARGET"]) {
   $syncTarget = Ask "Sync target (joplinCloud/webdav/nextcloud/joplinServer)" "joplinCloud"
@@ -193,6 +214,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "conf") | Out-Nul
   "APP_KEY=$appKey"
   "HMAC_KEY=$hmacKey"
   "LANG=$lang"
+  "UPLOAD_MODE=$uploadMode"
   "SYNC_TARGET=$syncTarget"
   "JOPLIN_EMAIL=$joplinEmail"
   "JOPLIN_PASSWORD=$joplinPass"
@@ -210,6 +232,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "conf") | Out-Nul
   "LANG=$lang"
   "CONTENT_TYPE=Text"
   "API_URL=https://cloud.myscript.com/api/v4.0/iink/batch"
+  "UPLOAD_MODE=$uploadMode"
 ) | Set-Content -Encoding utf8 $localHwr
 Ok "Saved conf/install.secrets + conf/hwr.env (gitignored)"
 

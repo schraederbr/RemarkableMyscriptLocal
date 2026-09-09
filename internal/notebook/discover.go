@@ -135,15 +135,30 @@ func OutPaths(outDir, docUUID, pageUUID string) (txt, js, index string) {
 		filepath.Join(base, "INDEX.txt")
 }
 
-// ShouldSkip returns true when out txt exists and is newer than the .rm.
-func ShouldSkip(rmPath, txtPath string) bool {
+// SVGPath returns the content-fit SVG path for a page under outDir.
+func SVGPath(outDir, docUUID, pageUUID string) string {
+	return filepath.Join(outDir, docUUID, pageUUID+".svg")
+}
+
+// ShouldSkip returns true when every required output exists and is newer than the .rm.
+// Pass the outputs that the current upload mode needs (txt and/or svg).
+// With no outputs, returns false.
+func ShouldSkip(rmPath string, outputs ...string) bool {
+	if len(outputs) == 0 {
+		return false
+	}
 	rmInfo, err := os.Stat(rmPath)
 	if err != nil {
 		return false
 	}
-	txtInfo, err := os.Stat(txtPath)
-	if err != nil {
-		return false
+	for _, out := range outputs {
+		info, err := os.Stat(out)
+		if err != nil {
+			return false
+		}
+		if info.ModTime().Before(rmInfo.ModTime()) {
+			return false
+		}
 	}
-	return !txtInfo.ModTime().Before(rmInfo.ModTime())
+	return true
 }

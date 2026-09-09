@@ -1,5 +1,5 @@
 // Command rm2hwr recognizes reMarkable 2 handwriting via MyScript cloud
-// and writes plaintext under /home/root/hwr/out/.
+// and writes plaintext / SVG under /home/root/hwr/out/.
 package main
 
 import (
@@ -16,6 +16,7 @@ import (
 	"github.com/schraederbr/RemarkableMyscriptLocal/internal/myscript"
 	"github.com/schraederbr/RemarkableMyscriptLocal/internal/notebook"
 	"github.com/schraederbr/RemarkableMyscriptLocal/internal/rm"
+	"github.com/schraederbr/RemarkableMyscriptLocal/internal/svg"
 )
 
 func main() {
@@ -33,6 +34,7 @@ func main() {
 		envFile      = flag.String("env", "/home/root/hwr/conf/hwr.env", "hwr.env path")
 		joplinUpsert = flag.Bool("joplin-upsert", false, "after HWR, upsert NOTE.md into jonobones by title")
 		upsertBin    = flag.String("joplin-upsert-bin", "/home/root/hwr/scripts/joplin-upsert.js", "path to joplin-upsert.js")
+		uploadMode   = flag.String("upload-mode", "", "override UPLOAD_MODE: text|svg|both")
 	)
 	flag.Parse()
 
@@ -47,7 +49,7 @@ func main() {
 		selectors++
 	}
 	if selectors != 1 {
-		fmt.Fprintf(os.Stderr, "usage: rm2hwr --all | --name SUBSTR | --uuid DOC [--page PAGE] [--dry-run] [--joplin-upsert] [--xochitl DIR] [--outdir DIR] [--env FILE]\n")
+		fmt.Fprintf(os.Stderr, "usage: rm2hwr --all | --name SUBSTR | --uuid DOC [--page PAGE] [--dry-run] [--joplin-upsert] [--upload-mode text|svg|both] [--xochitl DIR] [--outdir DIR] [--env FILE]\n")
 		fmt.Fprintf(os.Stderr, "require exactly one of --all / --name / --uuid\n")
 		os.Exit(2)
 	}
@@ -62,13 +64,18 @@ func main() {
 		}
 		client = myscript.NewClient(env)
 	} else {
-		// Dry-run still needs lang/contentType defaults.
-		env = &myscript.Env{Lang: "en_US", ContentType: "Text"}
+		// Dry-run still needs lang/contentType/uploadMode defaults.
+		env = &myscript.Env{Lang: "en_US", ContentType: "Text", UploadMode: "text"}
 		if st, err := os.Stat(*envFile); err == nil && !st.IsDir() {
 			if e, err := myscript.LoadEnv(*envFile); err == nil {
 				env = e
 			}
 		}
+	}
+	if *uploadMode != "" {
+		env.UploadMode = myscript.NormalizeUploadMode(*uploadMode)
+	} else {
+		env.UploadMode = myscript.NormalizeUploadMode(env.UploadMode)
 	}
 
 	docs, err := notebook.Find(*xochitl, *all, *name, *uuid)
@@ -118,9 +125,12 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 		return "", err
 	}
 
+	wantText := env.WantText()
+	wantSVG := env.WantSVG()
+
 	var indexLines []string
 	indexLines = append(indexLines, fmt.Sprintf("# %s (%s)", doc.Meta.VisibleName, doc.UUID))
-	indexLines = append(indexLines, fmt.Sprintf("# generated %s", time.Now().UTC().Format(time.RFC3339)))
+	indexLines = append(indexLines, fmt.Sprintf("# generated %s uploadMode=%s", time.Now().UTC().Format(time.RFC3339), env.UploadMode))
 
 	cfg := myscript.Config{
 		Lang:        env.Lang,
@@ -132,6 +142,7 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 
 	for _, pref := range pages {
 		txtPath, jsonPath, _ := notebook.OutPaths(outdir, doc.UUID, pref.PageUUID)
+		svgPath := notebook.SVGPath(outdir, doc.UUID, pref.PageUUID)
 		linePrefix := fmt.Sprintf("page %d %s", pref.Index, pref.PageUUID)
 
 		if _, err := os.Stat(pref.RMPath); err != nil {
@@ -141,14 +152,28 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 			continue
 		}
 
-		if !dryRun && notebook.ShouldSkip(pref.RMPath, txtPath) {
-			log.Printf("%s: out txt newer than .rm, skip", linePrefix)
+		needed := make([]string, 0, 2)
+		if wantText {
+			needed = append(needed, txtPath)
+		}
+		if wantSVG {
+			needed = append(needed, svgPath)
+		}
+		if !dryRun && notebook.ShouldSkip(pref.RMPath, needed...) {
+			log.Printf("%s: outputs newer than .rm, skip", linePrefix)
 			indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tSKIP", pref.Index, pref.PageUUID))
-			text := ""
-			if b, err := os.ReadFile(txtPath); err == nil {
-				text = string(b)
+			hp := handoff.Page{Index: pref.Index, PageUUID: pref.PageUUID, Status: "SKIP"}
+			if wantText {
+				if b, err := os.ReadFile(txtPath); err == nil {
+					hp.Text = string(b)
+				}
 			}
-			handoffPages = append(handoffPages, handoff.Page{Index: pref.Index, PageUUID: pref.PageUUID, Status: "SKIP", Text: text})
+			if wantSVG {
+				if _, err := os.Stat(svgPath); err == nil {
+					hp.SvgPath = pref.PageUUID + ".svg"
+				}
+			}
+			handoffPages = append(handoffPages, hp)
 			continue
 		}
 
@@ -160,50 +185,83 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 			continue
 		}
 
+		svgRel := ""
+		if wantSVG {
+			if raw := svg.Render(page); len(raw) > 0 {
+				if err := os.WriteFile(svgPath, raw, 0o644); err != nil {
+					return "", fmt.Errorf("%s: write svg: %w", linePrefix, err)
+				}
+				svgRel = pref.PageUUID + ".svg"
+				log.Printf("%s: wrote %s (%d bytes)", linePrefix, svgPath, len(raw))
+			}
+		}
+
 		body, ok, err := myscript.BuildBatchJSON(page, cfg)
 		if err != nil {
 			return "", fmt.Errorf("%s: build json: %w", linePrefix, err)
 		}
 		if !ok {
-			// Empty page → empty txt, skip HTTP.
-			if err := os.WriteFile(txtPath, []byte{}, 0o644); err != nil {
-				return "", err
+			// Empty ink → empty txt (if text wanted), no svg; EMPTY as today.
+			if wantText {
+				if err := os.WriteFile(txtPath, []byte{}, 0o644); err != nil {
+					return "", err
+				}
 			}
-			log.Printf("%s: empty page → empty txt", linePrefix)
+			log.Printf("%s: empty page", linePrefix)
 			indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tEMPTY", pref.Index, pref.PageUUID))
-			handoffPages = append(handoffPages, handoff.Page{Index: pref.Index, PageUUID: pref.PageUUID, Status: "EMPTY"})
+			handoffPages = append(handoffPages, handoff.Page{Index: pref.Index, PageUUID: pref.PageUUID, Status: "EMPTY", SvgPath: svgRel})
 			continue
 		}
 
 		if dryRun {
-			if err := os.WriteFile(jsonPath, body, 0o644); err != nil {
+			if wantText {
+				if err := os.WriteFile(jsonPath, body, 0o644); err != nil {
+					return "", err
+				}
+				log.Printf("%s: dry-run wrote %s", linePrefix, jsonPath)
+			}
+			indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tDRY-RUN", pref.Index, pref.PageUUID))
+			handoffPages = append(handoffPages, handoff.Page{Index: pref.Index, PageUUID: pref.PageUUID, Status: "DRY-RUN", SvgPath: svgRel})
+			continue
+		}
+
+		text := ""
+		if wantText {
+			_ = os.WriteFile(jsonPath, body, 0o644)
+			recognized, err := client.Recognize(body)
+			if err != nil {
+				log.Printf("%s: recognize: %v", linePrefix, err)
+				indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tERROR", pref.Index, pref.PageUUID))
+				handoffPages = append(handoffPages, handoff.Page{Index: pref.Index, PageUUID: pref.PageUUID, Status: "ERROR", SvgPath: svgRel})
+				continue
+			}
+			text = recognized
+			if !strings.HasSuffix(text, "\n") {
+				text += "\n"
+			}
+			if err := os.WriteFile(txtPath, []byte(text), 0o644); err != nil {
 				return "", err
 			}
-			log.Printf("%s: dry-run wrote %s", linePrefix, jsonPath)
-			indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tDRY-RUN", pref.Index, pref.PageUUID))
-			handoffPages = append(handoffPages, handoff.Page{Index: pref.Index, PageUUID: pref.PageUUID, Status: "DRY-RUN"})
-			continue
+			log.Printf("%s: wrote %s (%d bytes)", linePrefix, txtPath, len(text))
+		} else if wantSVG && svgRel == "" {
+			// Ink present for MyScript but svg.Render returned nil (e.g. <2 pts) — treat as EMPTY-ish.
+			log.Printf("%s: no svg produced", linePrefix)
 		}
 
-		// Also keep JSON alongside plaintext for debugging (optional).
-		_ = os.WriteFile(jsonPath, body, 0o644)
-
-		text, err := client.Recognize(body)
-		if err != nil {
-			log.Printf("%s: recognize: %v", linePrefix, err)
-			indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tERROR", pref.Index, pref.PageUUID))
-			handoffPages = append(handoffPages, handoff.Page{Index: pref.Index, PageUUID: pref.PageUUID, Status: "ERROR"})
-			continue
+		status := "OK"
+		if !wantText && wantSVG {
+			if svgRel == "" {
+				status = "EMPTY"
+			}
 		}
-		if !strings.HasSuffix(text, "\n") {
-			text += "\n"
-		}
-		if err := os.WriteFile(txtPath, []byte(text), 0o644); err != nil {
-			return "", err
-		}
-		log.Printf("%s: wrote %s (%d bytes)", linePrefix, txtPath, len(text))
-		indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tOK", pref.Index, pref.PageUUID))
-		handoffPages = append(handoffPages, handoff.Page{Index: pref.Index, PageUUID: pref.PageUUID, Status: "OK", Text: text})
+		indexLines = append(indexLines, fmt.Sprintf("%d\t%s\t%s", pref.Index, pref.PageUUID, status))
+		handoffPages = append(handoffPages, handoff.Page{
+			Index:    pref.Index,
+			PageUUID: pref.PageUUID,
+			Status:   status,
+			Text:     text,
+			SvgPath:  svgRel,
+		})
 	}
 
 	_, _, indexPath := notebook.OutPaths(outdir, doc.UUID, "")
@@ -211,10 +269,9 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 		return "", err
 	}
 
-	// For SKIP pages we already loaded text; for dry-run leave FullText thin.
-	if err := handoff.WriteArtifacts(docOut, doc.Meta.VisibleName, doc.UUID, handoffPages); err != nil {
+	if err := handoff.WriteArtifacts(docOut, doc.Meta.VisibleName, doc.UUID, env.UploadMode, handoffPages); err != nil {
 		return docOut, fmt.Errorf("handoff artifacts: %w", err)
 	}
-	log.Printf("document %s: wrote NOTE.md + HANDOFF.json", doc.UUID)
+	log.Printf("document %s: wrote NOTE.md + HANDOFF.json (uploadMode=%s)", doc.UUID, env.UploadMode)
 	return docOut, nil
 }

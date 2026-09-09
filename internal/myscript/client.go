@@ -18,6 +18,32 @@ type Env struct {
 	Lang        string
 	ContentType string
 	APIURL      string
+	// UploadMode is text|svg|both. Empty means text (backward compatible).
+	UploadMode string
+}
+
+// NormalizeUploadMode returns text, svg, or both. Empty/unknown → text.
+func NormalizeUploadMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "svg":
+		return "svg"
+	case "both":
+		return "both"
+	default:
+		return "text"
+	}
+}
+
+// WantText reports whether MyScript plaintext should be produced / uploaded.
+func (e *Env) WantText() bool {
+	m := NormalizeUploadMode(e.UploadMode)
+	return m == "text" || m == "both"
+}
+
+// WantSVG reports whether content-fit page SVGs should be produced / uploaded.
+func (e *Env) WantSVG() bool {
+	m := NormalizeUploadMode(e.UploadMode)
+	return m == "svg" || m == "both"
 }
 
 // LoadEnv reads KEY=VALUE lines from path (shell-style, # comments allowed).
@@ -30,6 +56,7 @@ func LoadEnv(path string) (*Env, error) {
 		Lang:        "en_US",
 		ContentType: "Text",
 		APIURL:      "https://cloud.myscript.com/api/v4.0/iink/batch",
+		UploadMode:  "text",
 	}
 	for _, line := range strings.Split(string(raw), "\n") {
 		line = strings.TrimSpace(line)
@@ -54,8 +81,11 @@ func LoadEnv(path string) (*Env, error) {
 			env.ContentType = v
 		case "API_URL":
 			env.APIURL = v
+		case "UPLOAD_MODE":
+			env.UploadMode = NormalizeUploadMode(v)
 		}
 	}
+	env.UploadMode = NormalizeUploadMode(env.UploadMode)
 	return env, nil
 }
 

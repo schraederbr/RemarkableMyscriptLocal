@@ -11,6 +11,7 @@ Gather these **before** running `scripts/install-rm2-stack.ps1`. The installer a
 | reMarkable SSH password | Settings → Help → Copyrights and licenses | One-time PC SSH key install |
 | MyScript account + `APP_KEY` | [Sign up / console](https://developer.myscript.com/) | HWR (required) |
 | MyScript `HMAC_KEY` | Same app (optional) | Blank OK if HMAC disabled |
+| Joplin **upload mode** | Installer prompt (or `UPLOAD_MODE` in secrets) | `text` / `svg` / `both` (default **both**) |
 | Joplin Cloud email + password | [joplincloud.com](https://joplincloud.com/) | **Direct sync** via jonobones on the tablet |
 
 WebDAV / Nextcloud / Joplin Server: use URL + username + password instead (`SYNC_TARGET` in `conf/install.secrets.example`).
