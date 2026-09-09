@@ -41,11 +41,20 @@ rm -f "$ANSWERS_CLEAN"
 if [ -f "$CONFIG" ]; then
   TOKEN=$(node -e "const fs=require('fs');const t=fs.readFileSync(process.argv[1],'utf8');const m=t.match(/\"token\"\\s*:\\s*\"([^\"]+)\"/);if(!m)process.exit(2);process.stdout.write(m[1])" "$CONFIG")
   umask 077
+  # Optional PARENT_* from install.meta (host installer)
+  PARENT_ID="${JONOBONES_PARENT_ID:-}"
+  PARENT_TITLE="${JONOBONES_PARENT_TITLE:-}"
   cat > "$HWR/conf/jonobones.env" <<EOF
 JONOBONES_URL=http://127.0.0.1:26637/v1
 JONOBONES_TOKEN=$TOKEN
 JONOBONES_PROFILE=$PROFILE_DIR
 EOF
+  if [ -n "$PARENT_ID" ]; then
+    echo "JONOBONES_PARENT_ID=$PARENT_ID" >> "$HWR/conf/jonobones.env"
+  fi
+  if [ -n "$PARENT_TITLE" ]; then
+    echo "JONOBONES_PARENT_TITLE=$PARENT_TITLE" >> "$HWR/conf/jonobones.env"
+  fi
   chmod 0600 "$HWR/conf/jonobones.env"
   rm -f "$ANSWERS"
   echo "wrote $HWR/conf/jonobones.env ; removed answers file"

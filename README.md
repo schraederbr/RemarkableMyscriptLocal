@@ -39,6 +39,7 @@ Have ready (see [docs/install-checklist.md](docs/install-checklist.md)):
 - Joplin Cloud email + password (or another sync target)
 - Joplin upload mode: text / SVG / both (installer default: both)
 - Periodic sync interval hours (installer default: **6**; `0` disables systemd timer)
+- Joplin notebook for **NEW** notes: blank = auto (notebook with most notes); or exact title / 32-hex id
 - Optional E2EE master password
 - **Tablet on Wi-Fi with internet**
 
@@ -60,7 +61,7 @@ node /home/root/hwr/scripts/joplin-upsert.js /home/root/hwr/out/<doc-uuid>
 jonobones sync
 ```
 
-Matching rule: **exact title** = reMarkable `visibleName`. Existing Joplin note → **replace** `<!-- rm2hwr:begin -->`…`<!-- rm2hwr:end -->` block (preserves content outside); missing → create with markers.
+Matching rule: **exact title** = reMarkable `visibleName`. Existing Joplin note → **replace** `<!-- rm2hwr:begin -->`…`<!-- rm2hwr:end -->` block (preserves content outside); missing → create with markers under `JONOBONES_PARENT_ID` / `JONOBONES_PARENT_TITLE`, or (if unset) the notebook with the **most notes**.
 
 Manual one-shot is above. **Automatic:** systemd timer `hwr-sync-recent.timer` runs `sync-recent.sh` every `SYNC_INTERVAL_HOURS` (default 6; RM2 has no crond): last-30-day notebooks, skip unchanged pages via state sidecars, else `rm2hwr --joplin-upsert`.
 
@@ -81,7 +82,7 @@ Handoff / replace markers / systemd timer: [docs/joplin-sync.md](docs/joplin-syn
 /home/root/hwr/
   bin/rm2hwr
   conf/hwr.env              # MyScript keys + UPLOAD_MODE + SYNC_INTERVAL_HOURS (0600)
-  conf/jonobones.env        # API token for upsert (written by installer)
+  conf/jonobones.env        # API token + optional JONOBONES_PARENT_ID/TITLE (written by installer)
   scripts/joplin-upsert.js
   scripts/sync-recent.sh    # systemd timer: recent notebooks → HWR → Joplin
   state/<doc-uuid>.json     # lastUploadedAt + per-page sha256/mtime

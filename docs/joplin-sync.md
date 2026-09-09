@@ -76,7 +76,19 @@ node /home/root/hwr/scripts/joplin-upsert.js /home/root/hwr/out/<doc-uuid>
 rm2hwr --name "9-8" --joplin-upsert
 ```
 
-Optional env: `JONOBONES_URL`, `JONOBONES_TOKEN`, `JONOBONES_PARENT_ID`, `JONOBONES_PROFILE`, `UPLOAD_MODE`.
+Optional env: `JONOBONES_URL`, `JONOBONES_TOKEN`, `JONOBONES_PARENT_ID`, `JONOBONES_PARENT_TITLE`, `JONOBONES_PROFILE`, `UPLOAD_MODE`.
+
+### Target notebook for NEW notes
+
+Creates only (updates still match by exact title anywhere):
+
+| Setting | Behavior |
+|---------|----------|
+| (unset) | Auto: notebook with the **most notes** at create time (tie-break: first max). Logs `using notebook <id> <title> (N notes)`. |
+| `JONOBONES_PARENT_ID` | Use that 32-hex notebook id |
+| `JONOBONES_PARENT_TITLE` | Exact title match among notebooks (if `PARENT_ID` empty) |
+
+Installer prompt: blank = auto; or title / id. Stored in `conf/jonobones.env` next to the token (and `conf/install.secrets`).
 
 ### Replace markers (not forever-append)
 

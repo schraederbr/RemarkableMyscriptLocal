@@ -12,6 +12,7 @@
     - MyScript APP_KEY (HMAC_KEY optional); https://developer.myscript.com/
     - Joplin upload mode (text / SVG / both; default both)
     - Periodic sync interval hours (default 6; 0 disables systemd timer)
+    - Joplin notebook for NEW notes (blank=auto most notes; or title / 32-hex id)
     - Joplin Cloud email + password (or other sync target fields)
     - Optional E2EE master password
 #>
@@ -87,9 +88,10 @@ Write-Host "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
 Write-Host "  2) MyScript APP_KEY (HMAC_KEY optional) - https://developer.myscript.com/"
 Write-Host "  3) Joplin upload mode: text / SVG / both (default both)"
 Write-Host "  4) Periodic sync interval hours (default 6; 0=disable systemd timer)"
-Write-Host "  5) Joplin Cloud email + password"
-Write-Host "  6) Optional: Joplin E2EE master password"
-Write-Host "  7) Tablet on Wi-Fi with internet (Joplin Cloud; npm only if offline bundle missing)"
+Write-Host "  5) Joplin notebook for NEW notes (blank=auto most notes; or title/id)"
+Write-Host "  6) Joplin Cloud email + password"
+Write-Host "  7) Optional: Joplin E2EE master password"
+Write-Host "  8) Tablet on Wi-Fi with internet (Joplin Cloud; npm only if offline bundle missing)"
 Write-Host "  See docs/install-checklist.md"
 Write-Host ""
 
@@ -178,6 +180,24 @@ if ($syncIntervalHours -notmatch '^\d+$') {
   }
 }
 
+# Joplin target notebook for NEW notes (creates only; updates match by title anywhere)
+$parentId = if ($sec["JONOBONES_PARENT_ID"]) { $sec["JONOBONES_PARENT_ID"].Trim() } else { "" }
+$parentTitle = if ($sec["JONOBONES_PARENT_TITLE"]) { $sec["JONOBONES_PARENT_TITLE"].Trim() } else { "" }
+if (-not $parentId -and -not $parentTitle -and -not $NonInteractive -and -not $sec.ContainsKey("JONOBONES_PARENT_ID") -and -not $sec.ContainsKey("JONOBONES_PARENT_TITLE")) {
+  Write-Host ""
+  Write-Host "Joplin notebook for NEW notes [auto=most notes]"
+  Write-Host "  Blank = auto-pick notebook with the most notes at create time."
+  Write-Host "  Or enter a notebook title (exact match) or a 32-hex notebook id."
+  $nbChoice = Ask "Joplin notebook for NEW notes [auto=most notes]" ""
+  if ($nbChoice) {
+    if ($nbChoice -match '^[0-9a-fA-F]{32}$') {
+      $parentId = $nbChoice.ToLowerInvariant()
+    } else {
+      $parentTitle = $nbChoice
+    }
+  }
+}
+
 $syncTarget = if ($sec["SYNC_TARGET"]) { $sec["SYNC_TARGET"] } else { "joplinCloud" }
 if (-not $NonInteractive -and -not $sec["SYNC_TARGET"]) {
   $syncTarget = Ask "Sync target (joplinCloud/webdav/nextcloud/joplinServer)" "joplinCloud"
@@ -231,6 +251,8 @@ New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "conf") | Out-Nul
   "LANG=$lang"
   "UPLOAD_MODE=$uploadMode"
   "SYNC_INTERVAL_HOURS=$syncIntervalHours"
+  "JONOBONES_PARENT_ID=$parentId"
+  "JONOBONES_PARENT_TITLE=$parentTitle"
   "SYNC_TARGET=$syncTarget"
   "JOPLIN_EMAIL=$joplinEmail"
   "JOPLIN_PASSWORD=$joplinPass"
@@ -595,8 +617,28 @@ $metaLocal = Join-Path $env:TEMP "rm2-install.meta"
 @(
   "SKIP_JONOBONES_INIT=$(if ($doInit) {'0'} else {'1'})"
   "START_JONOBONES=$(if ($startJb) {'1'} else {'0'})"
+  "JONOBONES_PARENT_ID=$parentId"
+  "JONOBONES_PARENT_TITLE=$parentTitle"
 ) | Set-Content -Encoding ascii $metaLocal
 Copy-ToRemote $metaLocal "/home/root/hwr/conf/install.meta"
+# Keep PARENT_* next to token in jonobones.env (create or patch; init also writes these from install.meta)
+$patchParentSh = Join-Path $env:TEMP "rm2-patch-parent.sh"
+@"
+JB=/home/root/hwr/conf/jonobones.env
+mkdir -p /home/root/hwr/conf
+touch "`$JB"
+tmp=`$(mktemp)
+grep -v -E '^JONOBONES_PARENT_(ID|TITLE)=' "`$JB" > "`$tmp" 2>/dev/null || true
+PARENT_ID='$parentId'
+PARENT_TITLE='$parentTitle'
+if [ -n "`$PARENT_ID" ]; then echo "JONOBONES_PARENT_ID=`$PARENT_ID" >> "`$tmp"; fi
+if [ -n "`$PARENT_TITLE" ]; then echo "JONOBONES_PARENT_TITLE=`$PARENT_TITLE" >> "`$tmp"; fi
+mv "`$tmp" "`$JB"
+chmod 0600 "`$JB"
+"@ | Set-Content -Encoding ascii $patchParentSh
+Copy-ToRemote $patchParentSh "/tmp/rm2-patch-parent.sh"
+Invoke-Remote "sh /tmp/rm2-patch-parent.sh; rm -f /tmp/rm2-patch-parent.sh"
+Remove-Item $patchParentSh -Force -ErrorAction SilentlyContinue
 if ($doInit -and (Test-Path $answersPath)) {
   Copy-ToRemote $answersPath "/home/root/hwr/conf/jonobones-init-answers.txt"
   Remove-Item $answersPath -Force -ErrorAction SilentlyContinue

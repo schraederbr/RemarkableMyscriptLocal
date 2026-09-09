@@ -9,7 +9,12 @@
 // Env:
 //   JONOBONES_URL (default http://127.0.0.1:26637/v1)
 //   JONOBONES_TOKEN or read from ~/.config/jonobones/default/{lock.json,config.json5}
-//   JONOBONES_PARENT_ID optional notebook id for creates
+//   JONOBONES_PARENT_ID optional notebook id for creates (wins over TITLE)
+//   JONOBONES_PARENT_TITLE optional exact notebook title for creates (if PARENT_ID unset)
+//   If both PARENT_* unset: create under the notebook with the most notes
+//     (paginate GET /notes?fields=id,parent_id; count by parent_id among GET /notebooks;
+//      tie-break: keep first max). Logs: using notebook <id> <title> (N notes)
+//   Also loads /home/root/hwr/conf/jonobones.env if present (does not override existing env).
 //   UPLOAD_MODE text|svg|both (fallback when payload.uploadMode missing; default text)
 
 const fs = require('fs');
@@ -24,6 +29,109 @@ const OLD_SEP_RE = /<!--\s*rm2hwr\b(?!:begin|:end)[^>]*-->/;
 function die(msg, code = 1) {
   console.error('joplin-upsert:', msg);
   process.exit(code);
+}
+
+/** Load KEY=VALUE lines into process.env without overriding existing keys. */
+function loadEnvFile(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return;
+  const raw = fs.readFileSync(filePath, 'utf8').replace(/\r/g, '');
+  for (const line of raw.split('\n')) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const eq = t.indexOf('=');
+    if (eq <= 0) continue;
+    const key = t.slice(0, eq).trim();
+    let val = t.slice(eq + 1).trim();
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    if (process.env[key] === undefined || process.env[key] === '') {
+      process.env[key] = val;
+    }
+  }
+}
+
+function maybeLoadJonobonesEnv() {
+  const candidates = [
+    process.env.JONOBONES_ENV,
+    '/home/root/hwr/conf/jonobones.env',
+    path.join(__dirname, '..', 'conf', 'jonobones.env'),
+  ].filter(Boolean);
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      loadEnvFile(c);
+      break;
+    }
+  }
+}
+
+async function listAll(base, token, route, fields) {
+  const items = [];
+  let page = 1;
+  for (;;) {
+    const q = new URLSearchParams({
+      page: String(page),
+      limit: '100',
+      fields: fields,
+    });
+    const list = await api(base, token, 'GET', route + '?' + q.toString());
+    const batch = (list && list.items) || [];
+    items.push(...batch);
+    if (!list || !list.has_more) break;
+    page++;
+  }
+  return items;
+}
+
+/**
+ * Resolve notebook parent for creates:
+ * - JONOBONES_PARENT_ID if set
+ * - else exact title match for JONOBONES_PARENT_TITLE
+ * - else notebook with the most notes (tie-break: first max among notebooks list order)
+ */
+async function resolveParentId(base, token) {
+  const parentIdEnv = (process.env.JONOBONES_PARENT_ID || '').trim();
+  if (parentIdEnv) return { parentId: parentIdEnv, title: '', noteCount: null, how: 'env-id' };
+
+  const notebooks = await listAll(base, token, '/notebooks', 'id,title,parent_id');
+  if (!notebooks.length) die('no notebooks; create one in Joplin or set JONOBONES_PARENT_ID');
+
+  const parentTitle = (process.env.JONOBONES_PARENT_TITLE || '').trim();
+  if (parentTitle) {
+    const match = notebooks.find((n) => n.title === parentTitle);
+    if (!match) die('JONOBONES_PARENT_TITLE not found among notebooks: ' + JSON.stringify(parentTitle));
+    const notes = await listAll(base, token, '/notes', 'id,parent_id');
+    let n = 0;
+    for (const note of notes) {
+      if (note.parent_id === match.id) n++;
+    }
+    console.log('using notebook', match.id, match.title || '', '(' + n + ' notes)');
+    return { parentId: match.id, title: match.title || '', noteCount: n, how: 'env-title' };
+  }
+
+  const notes = await listAll(base, token, '/notes', 'id,parent_id');
+  const counts = Object.create(null);
+  for (const note of notes) {
+    const pid = note.parent_id || '';
+    if (!pid) continue;
+    counts[pid] = (counts[pid] || 0) + 1;
+  }
+
+  let best = notebooks[0];
+  let bestCount = counts[best.id] || 0;
+  for (let i = 1; i < notebooks.length; i++) {
+    const nb = notebooks[i];
+    const c = counts[nb.id] || 0;
+    if (c > bestCount) {
+      best = nb;
+      bestCount = c;
+    }
+  }
+  console.log('using notebook', best.id, best.title || '', '(' + bestCount + ' notes)');
+  return { parentId: best.id, title: best.title || '', noteCount: bestCount, how: 'most-notes' };
 }
 
 function loadToken() {
@@ -266,6 +374,7 @@ function mergeHwrIntoBody(existingBody, hwrBody, docUuid) {
 }
 
 async function main() {
+  maybeLoadJonobonesEnv();
   const base = (process.env.JONOBONES_URL || 'http://127.0.0.1:26637/v1').replace(/\/$/, '');
   const token = loadToken();
   const { payload, dir } = loadPayload(process.argv);
@@ -299,14 +408,8 @@ async function main() {
     noteId = found.id;
     console.log('updated note', found.id, JSON.stringify(payload.title), 'mode=' + mode);
   } else {
-    let parentId = process.env.JONOBONES_PARENT_ID || '';
-    if (!parentId) {
-      const nb = await api(base, token, 'GET', '/notebooks?limit=100&fields=id,title,parent_id');
-      const notebooks = (nb && nb.items) || [];
-      if (!notebooks.length) die('no notebooks; create one in Joplin or set JONOBONES_PARENT_ID');
-      parentId = notebooks[0].id;
-      console.log('using notebook', parentId, notebooks[0].title || '');
-    }
+    const resolved = await resolveParentId(base, token);
+    const parentId = resolved.parentId;
     const created = await api(base, token, 'POST', '/notes', {
       parent_id: parentId,
       title: payload.title,
