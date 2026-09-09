@@ -39,7 +39,7 @@ npm config set prefix "$NPM_PREFIX"
 node -p "process.arch+' napi='+process.versions.napi+' '+process.version"
 node -e "require('fs'); console.log('core ok')"
 
-echo "==> npm install jonobones (JS only)"
+echo "==> npm install jonobones (JS only; needs Wi-Fi/internet)"
 npm install -g jonobones --ignore-scripts --ignore-engines --no-fund --no-audit
 
 echo "==> fetch Revcord sqlite3 binary"

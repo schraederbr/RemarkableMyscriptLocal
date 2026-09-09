@@ -85,6 +85,7 @@ Write-Host "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
 Write-Host "  2) MyScript APP_KEY and HMAC_KEY"
 Write-Host "  3) Joplin Cloud email + password"
 Write-Host "  4) Optional: Joplin E2EE master password"
+Write-Host "  5) Tablet on Wi-Fi with internet (npm install + Joplin Cloud sync)"
 Write-Host "  See docs/install-checklist.md"
 Write-Host ""
 
@@ -336,6 +337,16 @@ try {
 $arch = Invoke-RemoteCapture "uname -m"
 if ($arch -ne "armv7l") { throw "Expected armv7l, got '$arch'" }
 
+Info "Checking tablet internet (Wi-Fi required for npm + Joplin Cloud)…"
+$net = Invoke-RemoteCapture "ping -c 1 -W 3 1.1.1.1 >/dev/null 2>&1 && echo yes || echo no"
+if ($net -ne "yes") {
+  Warn "Tablet has no internet right now."
+  Warn "Turn on Wi-Fi before continuing — npm install and Joplin Cloud sync will fail without it."
+  if (-not (AskYes "Continue anyway?" $false)) { throw "Aborted: tablet needs Wi-Fi/internet" }
+} else {
+  Ok "Tablet can reach the internet"
+}
+
 $hasConfig = Invoke-RemoteCapture "test -f /home/root/.config/jonobones/default/config.json5 && echo yes || echo no"
 $answerLines.Clear()
 if ($hasConfig -eq "yes") {
@@ -373,7 +384,14 @@ if (-not $SkipBuild) {
       Push-Location $RepoRoot
       $env:CGO_ENABLED = "0"; $env:GOOS = "linux"; $env:GOARCH = "arm"; $env:GOARM = "7"
       New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "dist") | Out-Null
-      go build -o $dist ./cmd/rm2hwr
+      try {
+        go build -o $dist ./cmd/rm2hwr
+      } finally {
+        Remove-Item Env:GOOS -ErrorAction SilentlyContinue
+        Remove-Item Env:GOARCH -ErrorAction SilentlyContinue
+        Remove-Item Env:GOARM -ErrorAction SilentlyContinue
+        Remove-Item Env:CGO_ENABLED -ErrorAction SilentlyContinue
+      }
       Pop-Location
     }
     if (-not (Test-Path $dist)) { throw "build missing $dist" }
@@ -381,7 +399,7 @@ if (-not $SkipBuild) {
   }
 }
 
-# Ensure Node tarball available on host for offline tablet
+# Prefetch Node tarball on the PC (tablet often lacks curl/wget; Wi-Fi still needed for npm/Joplin)
 $nodeVer = "20.20.2"
 $nodeTar = Join-Path $env:TEMP "node-v$nodeVer-linux-armv7l.tar.xz"
 if (-not (Test-Path $nodeTar) -or (Get-Item $nodeTar).Length -lt 1000000) {

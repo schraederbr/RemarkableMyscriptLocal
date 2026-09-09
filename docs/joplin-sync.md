@@ -1,4 +1,6 @@
-# HWR → Joplin (jonobones) pipeline
+# HWR → Joplin (direct sync via jonobones)
+
+# HWR â†’ Joplin (jonobones) pipeline
 
 After `rm2hwr` recognizes a notebook, it writes:
 
@@ -29,10 +31,12 @@ Joplin upsert uses **exact** title match: append if a note exists, otherwise cre
 }
 ```
 
-Grok bots (RemarkableMyScript → Jonobones) can SendToAgent this object when a run finishes.
+Grok bots (RemarkableMyScript â†’ Jonobones) can SendToAgent this object when a run finishes.
 `NOTE.md` / `HANDOFF.json` remain the on-device source of truth if messaging fails.
 
 ## Upsert on device
+
+jonobones holds a local Joplin vault on the tablet and **syncs directly** with Joplin Cloud (or your sync target). Upsert writes into that local vault; the next sync cycle pushes upstream.
 
 Requires jonobones daemon listening on `127.0.0.1:26637` and an API token from init:
 
