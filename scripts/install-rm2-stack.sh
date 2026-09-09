@@ -41,25 +41,41 @@ if [[ -f "$ROOT/dist/rm2hwr-linux-armv7" ]]; then
 fi
 ssh "$USER@$HOST" 'chmod +x /home/root/hwr/scripts/*.sh; chmod 0600 /home/root/hwr/conf/hwr.env; rm -f /tmp/rm2-install.status; : > /tmp/rm2-install.log; nohup sh /home/root/hwr/scripts/install-job.sh >/tmp/rm2-install.nohup.out 2>&1 & echo started'
 
-# Install sync-recent cron from SYNC_INTERVAL_HOURS in hwr.env (default 6; 0 disables)
+# Install sync-recent systemd timer from SYNC_INTERVAL_HOURS in hwr.env (default 6; 0 disables)
+# RM2 has systemctl but no crond; BusyBox crontab is a no-op on real hardware.
 HOURS=$(grep -E '^SYNC_INTERVAL_HOURS=' "$ROOT/conf/hwr.env" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '\r' || true)
 HOURS=${HOURS:-6}
-ssh "$USER@$HOST" "HOURS='$HOURS' sh -s" <<'CRON'
+scp "$ROOT/scripts/on-device/hwr-sync-recent.service" \
+    "$ROOT/scripts/on-device/hwr-sync-recent.timer" \
+    "$USER@$HOST:/tmp/"
+ssh "$USER@$HOST" "HOURS='$HOURS' sh -s" <<'TIMER'
 set -e
-TMP=/tmp/rm2-crontab.new
-crontab -l 2>/dev/null | grep -v sync-recent.sh | grep -v rm2hwr-sync-recent > "$TMP" || true
-if [ -n "$HOURS" ] && [ "$HOURS" -gt 0 ] 2>/dev/null; then
-  echo "# rm2hwr-sync-recent every ${HOURS}h" >> "$TMP"
-  echo "17 */$HOURS * * * /home/root/hwr/scripts/sync-recent.sh >> /tmp/hwr-sync-recent.log 2>&1" >> "$TMP"
-  crontab "$TMP"
-  echo "crontab installed interval=$HOURS"
-else
-  if [ -s "$TMP" ]; then crontab "$TMP"; else crontab -r 2>/dev/null || true; fi
-  echo "crontab sync-recent disabled"
-fi
-rm -f "$TMP"
+UNIT_DIR=/etc/systemd/system
 chmod 0755 /home/root/hwr/scripts/sync-recent.sh
-CRON
+cp /tmp/hwr-sync-recent.service "$UNIT_DIR/hwr-sync-recent.service"
+cp /tmp/hwr-sync-recent.timer "$UNIT_DIR/hwr-sync-recent.timer"
+# Drop leftover sync-recent crontab lines from older installers (harmless if no crontab)
+if command -v crontab >/dev/null 2>&1; then
+  TMP=/tmp/rm2-crontab.new
+  crontab -l 2>/dev/null | grep -v sync-recent.sh | grep -v rm2hwr-sync-recent > "$TMP" || true
+  if [ -s "$TMP" ]; then crontab "$TMP" 2>/dev/null || true; else crontab -r 2>/dev/null || true; fi
+  rm -f "$TMP"
+fi
+if [ -n "$HOURS" ] && [ "$HOURS" -gt 0 ] 2>/dev/null; then
+  sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=${HOURS}h/" "$UNIT_DIR/hwr-sync-recent.timer"
+  systemctl daemon-reload
+  systemctl enable hwr-sync-recent.timer
+  systemctl start hwr-sync-recent.timer
+  echo "systemd timer enabled interval=${HOURS}h"
+  systemctl list-timers --all 2>/dev/null | grep -E "hwr-sync|NEXT|UNIT" || systemctl status hwr-sync-recent.timer --no-pager || true
+else
+  systemctl daemon-reload
+  systemctl stop hwr-sync-recent.timer 2>/dev/null || true
+  systemctl disable hwr-sync-recent.timer 2>/dev/null || true
+  echo "systemd timer disabled (SYNC_INTERVAL_HOURS=0)"
+fi
+rm -f /tmp/hwr-sync-recent.service /tmp/hwr-sync-recent.timer
+TIMER
 
 echo "==> Job running on tablet. Heartbeat every ~60s (Ctrl+C here is safe — job keeps running)."
 deadline=$((SECONDS + 6*3600))

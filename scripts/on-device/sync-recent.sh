@@ -6,9 +6,10 @@
 #   /home/root/hwr/state/<doc-uuid>.json
 #   { lastUploadedAt, joplinNoteId?, pages: [{pageUuid, sha256, mtime}] }
 #
-# Cron (host installer): every SYNC_INTERVAL_HOURS hours (default 6).
-# Change: set SYNC_INTERVAL_HOURS in hwr.env and re-run installer, or edit crontab.
-# Disable: remove the sync-recent crontab line (crontab -e), or crontab -r (clears all).
+# Systemd timer (host installer): every SYNC_INTERVAL_HOURS hours (default 6).
+# Units: hwr-sync-recent.service + hwr-sync-recent.timer under /etc/systemd/system/.
+# Change: set SYNC_INTERVAL_HOURS in hwr.env and re-run installer, or edit the timer.
+# Disable: SYNC_INTERVAL_HOURS=0 + re-run installer, or systemctl disable --now hwr-sync-recent.timer.
 
 set -e
 
