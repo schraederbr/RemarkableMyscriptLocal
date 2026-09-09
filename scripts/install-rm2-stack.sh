@@ -5,6 +5,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HOST="${1:-10.11.99.1}"
 USER="${2:-root}"
+if [[ -z "${RM_SSH_PASSWORD:-}" && -f "$ROOT/conf/install.secrets" ]]; then
+  # shellcheck disable=SC1091
+  RM_SSH_PASSWORD="$(grep -E '^SSH_PASSWORD=' "$ROOT/conf/install.secrets" | head -n1 | cut -d= -f2- || true)"
+  export RM_SSH_PASSWORD
+fi
+if [[ -n "${RM_SSH_PASSWORD:-}" ]]; then
+  "$ROOT/scripts/ensure-rm-ssh-key.sh" "$USER@$HOST"
+else
+  echo "==> RM_SSH_PASSWORD not set — assuming SSH key auth already works"
+fi
 echo "==> This bash helper deploys files and starts a nohup job."
 echo "    Put credentials in $ROOT/conf/install.secrets first (see docs/install-checklist.md)."
 if [[ ! -f "$ROOT/conf/install.secrets" || ! -f "$ROOT/conf/hwr.env" ]]; then

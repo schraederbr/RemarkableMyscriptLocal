@@ -8,6 +8,7 @@
 
   Required from each person (prompted if missing):
     - Tablet host (USB 10.11.99.1 or Wi-Fi IP)
+    - reMarkable SSH password (auto-installs your PC SSH key once)
     - MyScript APP_KEY + HMAC_KEY
     - Joplin Cloud email + password (or other sync target fields)
     - Optional E2EE master password
@@ -80,7 +81,7 @@ Info "Repo: $RepoRoot"
 
 Write-Host ""
 Write-Host "What this installer will ask for (have these ready):"
-Write-Host "  1) Tablet IP (USB default 10.11.99.1) + working SSH as root"
+Write-Host "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
 Write-Host "  2) MyScript APP_KEY and HMAC_KEY"
 Write-Host "  3) Joplin Cloud email + password"
 Write-Host "  4) Optional: Joplin E2EE master password"
@@ -114,6 +115,16 @@ Info "Target ${User}@${HostName}"
 
 # --- collect credentials UP FRONT ---
 Info "Collecting credentials (all of them, before any long step)"
+
+$sshPassword = $sec["SSH_PASSWORD"]
+if (-not $sshPassword) {
+  # Empty allowed only if key auth already works (checked later)
+  if (-not $NonInteractive) {
+    $sshPassword = AskSecret "reMarkable SSH password (blank if key auth already works)"
+  } else {
+    $sshPassword = ""
+  }
+}
 
 $appKey = $sec["APP_KEY"]
 $hmacKey = $sec["HMAC_KEY"]
@@ -168,6 +179,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "conf") | Out-Nul
 @(
   "HOST=$HostName"
   "SSH_USER=$User"
+  "SSH_PASSWORD=$sshPassword"
   "APP_KEY=$appKey"
   "HMAC_KEY=$hmacKey"
   "LANG=$lang"
@@ -202,29 +214,122 @@ $answerLines = New-Object System.Collections.Generic.List[string]
 # so we always prepend overwrite answer; if no config, that first line becomes the choice
 # and breaks. Probe remote after SSH instead.
 
+function Test-RmKeyAuth {
+  $out = & ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new "${User}@${HostName}" "echo ok" 2>$null
+  return ($LASTEXITCODE -eq 0 -and ("$out".Trim() -eq "ok"))
+}
+
+function Find-GitBash {
+  $candidates = @(
+    (Join-Path ${env:ProgramFiles} "Git\bin\bash.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "Git\bin\bash.exe"),
+    (Join-Path $env:LOCALAPPDATA "Programs\Git\bin\bash.exe")
+  )
+  foreach ($c in $candidates) {
+    if ($c -and (Test-Path $c)) { return $c }
+  }
+  return $null
+}
+
+function Ensure-RmSshKey([string]$password) {
+  if (Test-RmKeyAuth) {
+    Ok "SSH key auth already works"
+    return
+  }
+  if ([string]::IsNullOrEmpty($password)) {
+    throw "SSH key auth failed and no SSH password was provided. Enter the reMarkable SSH password so the installer can install your PC key."
+  }
+
+  $helper = Join-Path $RepoRoot "scripts\ensure-rm-ssh-key.sh"
+  if (-not (Test-Path $helper)) { throw "missing $helper" }
+
+  # Prefer Git Bash (NOT WSL). Pass password via env to the bash helper.
+  $gitBash = Find-GitBash
+  if ($gitBash) {
+    Info "Installing PC SSH key on tablet via Git Bash (password once)…"
+    $env:RM_SSH_PASSWORD = $password
+    try {
+      & $gitBash $helper "${User}@${HostName}"
+      if ($LASTEXITCODE -ne 0) { throw "ensure-rm-ssh-key.sh failed ($LASTEXITCODE)" }
+    } finally {
+      Remove-Item Env:RM_SSH_PASSWORD -ErrorAction SilentlyContinue
+    }
+  } else {
+    # Native OpenSSH ASKPASS fallback (no Python, no WSL, no Git Bash)
+    Info "Git Bash not found — using OpenSSH ASKPASS to install key…"
+    $sshDir = Join-Path $env:USERPROFILE ".ssh"
+    New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+    $pub = Join-Path $sshDir "id_ed25519.pub"
+    if (-not (Test-Path $pub)) {
+      $rsa = Join-Path $sshDir "id_rsa.pub"
+      if (Test-Path $rsa) { $pub = $rsa }
+      else {
+        $priv = Join-Path $sshDir "id_ed25519"
+        & ssh-keygen -t ed25519 -N '""' -f $priv -C "rm2-installer" | Out-Null
+      }
+    }
+    $pubkey = (Get-Content $pub -Raw).Trim()
+    $ask = Join-Path $env:TEMP ("rm-askpass-{0}.cmd" -f [guid]::NewGuid().ToString("n"))
+    # cmd askpass: echo password with care for special chars via delayed env
+    $pwFile = Join-Path $env:TEMP ("rm-ssh-pw-{0}.txt" -f [guid]::NewGuid().ToString("n"))
+    [IO.File]::WriteAllText($pwFile, $password)
+    @"
+@echo off
+type "$pwFile"
+"@ | Set-Content -Encoding ascii $ask
+    $prevAsk = $env:SSH_ASKPASS
+    $prevReq = $env:SSH_ASKPASS_REQUIRE
+    $prevDisp = $env:DISPLAY
+    $env:SSH_ASKPASS = $ask
+    $env:SSH_ASKPASS_REQUIRE = "force"
+    $env:DISPLAY = "ignored"
+    try {
+      $pubEsc = $pubkey.Replace("'", "'\''")
+      $remote = "mkdir -p /home/root/.ssh && chmod 700 /home/root/.ssh && touch /home/root/.ssh/authorized_keys && chmod 600 /home/root/.ssh/authorized_keys && grep -Fqx '$pubEsc' /home/root/.ssh/authorized_keys 2>/dev/null || echo '$pubEsc' >> /home/root/.ssh/authorized_keys && echo installed"
+      # Force password path for this one connection
+      $null = & ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 "${User}@${HostName}" $remote 2>&1
+      if ($LASTEXITCODE -ne 0) { throw "ASKPASS key install failed ($LASTEXITCODE). Install Git for Windows (Git Bash) and re-run." }
+    } finally {
+      if ($null -eq $prevAsk) { Remove-Item Env:SSH_ASKPASS -ErrorAction SilentlyContinue } else { $env:SSH_ASKPASS = $prevAsk }
+      if ($null -eq $prevReq) { Remove-Item Env:SSH_ASKPASS_REQUIRE -ErrorAction SilentlyContinue } else { $env:SSH_ASKPASS_REQUIRE = $prevReq }
+      if ($null -eq $prevDisp) { Remove-Item Env:DISPLAY -ErrorAction SilentlyContinue } else { $env:DISPLAY = $prevDisp }
+      Remove-Item $ask -Force -ErrorAction SilentlyContinue
+      Remove-Item $pwFile -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+  if (-not (Test-RmKeyAuth)) {
+    throw "SSH key install attempted but BatchMode auth still fails"
+  }
+  Ok "SSH key installed — password not needed for the rest of this install"
+}
+
 function Invoke-Remote([string]$remoteCmd) {
-  $sshArgs = @("-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4", "-o", "StrictHostKeyChecking=accept-new", "${User}@${HostName}", $remoteCmd)
+  $sshArgs = @("-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4", "-o", "StrictHostKeyChecking=accept-new", "${User}@${HostName}", $remoteCmd)
   & ssh @sshArgs
   if ($LASTEXITCODE -ne 0) { throw "ssh failed ($LASTEXITCODE): $remoteCmd" }
 }
 
 function Copy-ToRemote([string]$local, [string]$remote) {
-  & scp -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new $local "${User}@${HostName}:$remote"
+  & scp -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new $local "${User}@${HostName}:$remote"
   if ($LASTEXITCODE -ne 0) { throw "scp failed: $local -> $remote" }
 }
 
 function Invoke-RemoteCapture([string]$remoteCmd) {
-  $out = & ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${User}@${HostName}" $remoteCmd
+  $out = & ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${User}@${HostName}" $remoteCmd
   if ($LASTEXITCODE -ne 0) { throw "ssh failed ($LASTEXITCODE): $remoteCmd" }
   return ($out | Out-String).Trim()
 }
+
+Info "Ensuring SSH key auth (password used at most once)…"
+Ensure-RmSshKey $sshPassword
 
 Info "Checking SSH…"
 try {
   Invoke-Remote "uname -m"
   Ok "SSH works"
 } catch {
-  Warn "SSH failed. Set up keys or use USB ethernet (10.11.99.1)."
+  Warn "SSH failed after key bootstrap."
   throw
 }
 
