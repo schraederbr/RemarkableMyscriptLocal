@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Host-side installer for rm2hwr + jonobones on reMarkable 2.
 
@@ -9,7 +9,7 @@
   Required from each person (prompted if missing):
     - Tablet host (USB 10.11.99.1 or Wi-Fi IP)
     - reMarkable SSH password (auto-installs your PC SSH key once)
-    - MyScript APP_KEY + HMAC_KEY
+    - MyScript APP_KEY (HMAC_KEY optional); https://developer.myscript.com/
     - Joplin Cloud email + password (or other sync target fields)
     - Optional E2EE master password
 #>
@@ -82,7 +82,7 @@ Info "Repo: $RepoRoot"
 Write-Host ""
 Write-Host "What this installer will ask for (have these ready):"
 Write-Host "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
-Write-Host "  2) MyScript APP_KEY (HMAC_KEY optional) — https://developer.myscript.com/"
+Write-Host "  2) MyScript APP_KEY (HMAC_KEY optional) â€” https://developer.myscript.com/"
 Write-Host "  3) Joplin Cloud email + password"
 Write-Host "  4) Optional: Joplin E2EE master password"
 Write-Host "  5) Tablet on Wi-Fi with internet (Joplin Cloud; npm only if offline bundle missing)"
@@ -132,7 +132,7 @@ $hmacKey = $sec["HMAC_KEY"]
 $lang = if ($sec["LANG"]) { $sec["LANG"] } else { "en_US" }
 if (-not $appKey) {
   Write-Host ""
-  Write-Host "MyScript Cloud — create a free app and copy keys:"
+  Write-Host "MyScript Cloud â€” create a free app and copy keys:"
   Write-Host "  https://developer.myscript.com/"
   Write-Host ""
   $appKey = Ask "MyScript APP_KEY"
@@ -220,7 +220,7 @@ $choiceMap = @{
 }
 $answersPath = Join-Path $RepoRoot "conf\jonobones-init-answers.txt"
 $answerLines = New-Object System.Collections.Generic.List[string]
-# overwrite confirm is only consumed if config already exists — host cannot know for sure,
+# overwrite confirm is only consumed if config already exists â€” host cannot know for sure,
 # so we always prepend overwrite answer; if no config, that first line becomes the choice
 # and breaks. Probe remote after SSH instead.
 
@@ -256,7 +256,7 @@ function Ensure-RmSshKey([string]$password) {
   # Prefer Git Bash (NOT WSL). Pass password via env to the bash helper.
   $gitBash = Find-GitBash
   if ($gitBash) {
-    Info "Installing PC SSH key on tablet via Git Bash (password once)…"
+    Info "Installing PC SSH key on tablet via Git Bash (password once)â€¦"
     $env:RM_SSH_PASSWORD = $password
     try {
       & $gitBash $helper "${User}@${HostName}"
@@ -266,7 +266,7 @@ function Ensure-RmSshKey([string]$password) {
     }
   } else {
     # Native OpenSSH ASKPASS fallback (no Python, no WSL, no Git Bash)
-    Info "Git Bash not found — using OpenSSH ASKPASS to install key…"
+    Info "Git Bash not found â€” using OpenSSH ASKPASS to install keyâ€¦"
     $sshDir = Join-Path $env:USERPROFILE ".ssh"
     New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
     $pub = Join-Path $sshDir "id_ed25519.pub"
@@ -311,7 +311,7 @@ type "$pwFile"
   if (-not (Test-RmKeyAuth)) {
     throw "SSH key install attempted but BatchMode auth still fails"
   }
-  Ok "SSH key installed — password not needed for the rest of this install"
+  Ok "SSH key installed â€” password not needed for the rest of this install"
 }
 
 function Invoke-Remote([string]$remoteCmd) {
@@ -331,10 +331,10 @@ function Invoke-RemoteCapture([string]$remoteCmd) {
   return ($out | Out-String).Trim()
 }
 
-Info "Ensuring SSH key auth (password used at most once)…"
+Info "Ensuring SSH key auth (password used at most once)â€¦"
 Ensure-RmSshKey $sshPassword
 
-Info "Checking SSH…"
+Info "Checking SSHâ€¦"
 try {
   Invoke-Remote "uname -m"
   Ok "SSH works"
@@ -346,11 +346,11 @@ try {
 $arch = Invoke-RemoteCapture "uname -m"
 if ($arch -ne "armv7l") { throw "Expected armv7l, got '$arch'" }
 
-Info "Checking tablet internet (Wi-Fi required for npm + Joplin Cloud)…"
+Info "Checking tablet internet (Wi-Fi required for npm + Joplin Cloud)â€¦"
 $net = Invoke-RemoteCapture "ping -c 1 -W 3 1.1.1.1 >/dev/null 2>&1 && echo yes || echo no"
 if ($net -ne "yes") {
   Warn "Tablet has no internet right now."
-  Warn "Turn on Wi-Fi before continuing — npm install and Joplin Cloud sync will fail without it."
+  Warn "Turn on Wi-Fi before continuing â€” npm install and Joplin Cloud sync will fail without it."
   if (-not (AskYes "Continue anyway?" $false)) { throw "Aborted: tablet needs Wi-Fi/internet" }
 } else {
   Ok "Tablet can reach the internet"
@@ -386,7 +386,7 @@ if ($doInit) {
 $dist = Join-Path $RepoRoot "dist\rm2hwr-linux-armv7"
 if (-not $SkipBuild) {
   if (AskYes "Cross-compile rm2hwr for linux/armv7?" $true) {
-    Info "Building…"
+    Info "Buildingâ€¦"
     $buildPs1 = Join-Path $RepoRoot "scripts\build-armv7.ps1"
     if (Test-Path $buildPs1) { & powershell -NoProfile -File $buildPs1 }
     else {
@@ -412,7 +412,7 @@ if (-not $SkipBuild) {
 $nodeVer = "20.20.2"
 $nodeTar = Join-Path $env:TEMP "node-v$nodeVer-linux-armv7l.tar.xz"
 if (-not (Test-Path $nodeTar) -or (Get-Item $nodeTar).Length -lt 1000000) {
-  Info "Downloading Node $nodeVer armv7l on the PC (tablet often has no curl)…"
+  Info "Downloading Node $nodeVer armv7l on the PC (tablet often has no curl)â€¦"
   $prevProgress = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
   Invoke-WebRequest -Uri "https://nodejs.org/dist/v$nodeVer/node-v$nodeVer-linux-armv7l.tar.xz" -OutFile $nodeTar -UseBasicParsing
   $ProgressPreference = $prevProgress
@@ -422,23 +422,23 @@ if (-not (Test-Path $nodeTar) -or (Get-Item $nodeTar).Length -lt 1000000) {
 $offlineName = "jonobones-rm2-npm-offline-0.1.5-joplin-3.7.1.tar.gz"
 $offlineLocal = Join-Path $RepoRoot "dist\$offlineName"
 if (-not (Test-Path $offlineLocal) -or (Get-Item $offlineLocal).Length -lt 1000000) {
-  Info "Fetching offline npm bundle from GitHub Releases…"
+  Info "Fetching offline npm bundle from GitHub Releasesâ€¦"
   New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "dist") | Out-Null
   $prevProgress = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
   try {
     & gh release download --repo schraederbr/RemarkableMyscriptLocal --pattern $offlineName --dir (Join-Path $RepoRoot "dist") --clobber
   } catch {
-    Warn "gh release download failed — will try npm on-device (needs Wi-Fi): $_"
+    Warn "gh release download failed â€” will try npm on-device (needs Wi-Fi): $_"
   }
   $ProgressPreference = $prevProgress
 }
 if (Test-Path $offlineLocal) {
   Ok "Offline npm bundle ready: $offlineLocal"
 } else {
-  Warn "No offline npm bundle — on-device npm install will need Wi-Fi"
+  Warn "No offline npm bundle â€” on-device npm install will need Wi-Fi"
 }
 
-Info "Deploying files…"
+Info "Deploying filesâ€¦"
 Invoke-Remote "mkdir -p /home/root/hwr/bin /home/root/hwr/conf /home/root/hwr/scripts /home/root/hwr/out /home/root/hwr/third_party/revcord /home/root/downloads"
 if (Test-Path $dist) {
   Copy-ToRemote $dist "/home/root/hwr/bin/rm2hwr"
@@ -467,27 +467,27 @@ Invoke-Remote "chmod 0600 /home/root/hwr/conf/hwr.env /home/root/hwr/conf/jonobo
 Ok "Deployed"
 
 if ($SkipJonobones) {
-  Ok "SkipJonobones set — done after deploy"
+  Ok "SkipJonobones set â€” done after deploy"
   exit 0
 }
 
-Info "Starting on-device install job under nohup (survives SSH drop)…"
+Info "Starting on-device install job under nohup (survives SSH drop)â€¦"
 # Clear prior status, start detached
 Invoke-Remote "rm -f /tmp/rm2-install.status; : > /tmp/rm2-install.log; if command -v nohup >/dev/null 2>&1; then nohup sh /home/root/hwr/scripts/install-job.sh >/tmp/rm2-install.nohup.out 2>&1 & else sh /home/root/hwr/scripts/install-job.sh >/tmp/rm2-install.log 2>&1 & fi; echo started"
 
-Info "Polling /tmp/rm2-install.status (Ctrl+C here is safe — job keeps running on tablet)…"
+Info "Polling /tmp/rm2-install.status (Ctrl+C here is safe â€” job keeps running on tablet)â€¦"
 $deadline = (Get-Date).AddHours(6)
 while ((Get-Date) -lt $deadline) {
   Start-Sleep -Seconds 8
   try {
     $st = Invoke-RemoteCapture "cat /tmp/rm2-install.status 2>/dev/null || echo pending"
   } catch {
-    Warn "SSH blip while polling — retrying (on-device job still running)"
+    Warn "SSH blip while polling â€” retrying (on-device job still running)"
     continue
   }
   if ($st -eq "ok") { Ok "On-device job finished successfully"; break }
   if ($st -eq "fail") {
-    Warn "On-device job failed — last log lines:"
+    Warn "On-device job failed â€” last log lines:"
     Invoke-Remote "tail -n 40 /tmp/rm2-install.log" | Out-Host
     throw "install-job failed"
   }
