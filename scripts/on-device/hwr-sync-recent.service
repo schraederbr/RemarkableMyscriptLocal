@@ -1,0 +1,15 @@
+[Unit]
+Description=reMarkable HWR sync-recent to Joplin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PATH=/home/root/.npm-global/bin:/home/root/opt/node/bin:/home/root/hwr/bin:/usr/bin:/bin
+WorkingDirectory=/home/root/hwr
+ExecStart=/home/root/hwr/scripts/sync-recent.sh
+# Leave journal + script log (/tmp/hwr-sync-recent.log); do not block reboot forever
+TimeoutStartSec=2h
+
+[Install]
+WantedBy=multi-user.target

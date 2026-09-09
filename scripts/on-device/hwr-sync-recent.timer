@@ -1,0 +1,14 @@
+[Unit]
+Description=Timer for reMarkable HWR sync-recent (interval from SYNC_INTERVAL_HOURS)
+Requires=hwr-sync-recent.service
+
+[Timer]
+# First run shortly after boot; then every OnUnitActiveSec after each run starts
+OnBootSec=5min
+OnUnitActiveSec=6h
+AccuracySec=1min
+Persistent=true
+Unit=hwr-sync-recent.service
+
+[Install]
+WantedBy=timers.target

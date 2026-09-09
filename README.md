@@ -26,7 +26,7 @@ Have ready (see [docs/install-checklist.md](docs/install-checklist.md)):
 - reMarkable SSH password (installer installs your PC SSH key once — no manual key setup)
 - MyScript `APP_KEY` (optional `HMAC_KEY`) from [developer.myscript.com](https://developer.myscript.com/)
 - Joplin upload mode: text / SVG / both (installer default: both)
-- Periodic sync interval hours (installer default: **6**; `0` disables cron)
+- Periodic sync interval hours (installer default: **6**; `0` disables systemd timer)
 - Joplin Cloud email + password (or another sync target)
 - Optional E2EE master password
 - **Tablet on Wi-Fi with internet**
@@ -51,9 +51,9 @@ jonobones sync
 
 Matching rule: **exact title** = reMarkable `visibleName`. Existing Joplin note → **replace** `<!-- rm2hwr:begin -->`…`<!-- rm2hwr:end -->` block (preserves content outside); missing → create with markers.
 
-Manual one-shot is above. **Automatic:** BusyBox cron runs `sync-recent.sh` every `SYNC_INTERVAL_HOURS` (default 6): last-30-day notebooks, skip unchanged pages via state sidecars, else `rm2hwr --joplin-upsert`.
+Manual one-shot is above. **Automatic:** systemd timer `hwr-sync-recent.timer` runs `sync-recent.sh` every `SYNC_INTERVAL_HOURS` (default 6; RM2 has no crond): last-30-day notebooks, skip unchanged pages via state sidecars, else `rm2hwr --joplin-upsert`.
 
-Handoff / replace markers / cron: [docs/joplin-sync.md](docs/joplin-sync.md) · RM2 port notes: [docs/jonobones-rm2.md](docs/jonobones-rm2.md)
+Handoff / replace markers / systemd timer: [docs/joplin-sync.md](docs/joplin-sync.md) · RM2 port notes: [docs/jonobones-rm2.md](docs/jonobones-rm2.md)
 
 ## What runs on the tablet
 
@@ -72,12 +72,14 @@ Handoff / replace markers / cron: [docs/joplin-sync.md](docs/joplin-sync.md) · 
   conf/hwr.env              # MyScript keys + UPLOAD_MODE + SYNC_INTERVAL_HOURS (0600)
   conf/jonobones.env        # API token for upsert (written by installer)
   scripts/joplin-upsert.js
-  scripts/sync-recent.sh    # cron: recent notebooks → HWR → Joplin
+  scripts/sync-recent.sh    # systemd timer: recent notebooks → HWR → Joplin
   state/<doc-uuid>.json     # lastUploadedAt + per-page sha256/mtime
   out/<doc-uuid>/NOTE.md
   out/<doc-uuid>/HANDOFF.json
   out/<doc-uuid>/<page>.txt|.svg
 /home/root/.config/jonobones/default/   # jonobones profile + synced vault
+/etc/systemd/system/hwr-sync-recent.service
+/etc/systemd/system/hwr-sync-recent.timer   # OnUnitActiveSec from SYNC_INTERVAL_HOURS
 ```
 
 ### MyScript `hwr.env`
@@ -91,7 +93,7 @@ LANG=en_US
 CONTENT_TYPE=Text
 API_URL=https://cloud.myscript.com/api/v4.0/iink/batch
 UPLOAD_MODE=both  # text | svg | both (unset → text for old installs)
-SYNC_INTERVAL_HOURS=6  # cron for sync-recent.sh; 0 disables
+SYNC_INTERVAL_HOURS=6  # systemd timer for sync-recent.sh; 0 disables
 ```
 
 HMAC: `secret = APP_KEY + HMAC_KEY` (concatenation; `HMAC_KEY` may be empty), then HMAC-SHA512 over the raw body; headers `applicationKey` + `hmac`.

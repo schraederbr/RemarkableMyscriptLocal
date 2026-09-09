@@ -11,7 +11,7 @@
     - reMarkable SSH password (auto-installs your PC SSH key once)
     - MyScript APP_KEY (HMAC_KEY optional); https://developer.myscript.com/
     - Joplin upload mode (text / SVG / both; default both)
-    - Periodic sync interval hours (default 6; 0 disables cron)
+    - Periodic sync interval hours (default 6; 0 disables systemd timer)
     - Joplin Cloud email + password (or other sync target fields)
     - Optional E2EE master password
 #>
@@ -86,7 +86,7 @@ Write-Host "What this installer will ask for (have these ready):"
 Write-Host "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
 Write-Host "  2) MyScript APP_KEY (HMAC_KEY optional) - https://developer.myscript.com/"
 Write-Host "  3) Joplin upload mode: text / SVG / both (default both)"
-Write-Host "  4) Periodic sync interval hours (default 6; 0=disable cron)"
+Write-Host "  4) Periodic sync interval hours (default 6; 0=disable systemd timer)"
 Write-Host "  5) Joplin Cloud email + password"
 Write-Host "  6) Optional: Joplin E2EE master password"
 Write-Host "  7) Tablet on Wi-Fi with internet (Joplin Cloud; npm only if offline bundle missing)"
@@ -172,7 +172,7 @@ if ($syncIntervalHours -notmatch '^\d+$') {
   } else {
     Write-Host ""
     Write-Host "How often should the tablet auto-sync recent notebooks to Joplin?"
-    Write-Host "  Enter hours between runs (default 6). Use 0 to skip installing cron."
+    Write-Host "  Enter hours between runs (default 6). Use 0 to skip installing systemd timer."
     $syncIntervalHours = Ask "SYNC_INTERVAL_HOURS" "6"
     if ($syncIntervalHours -notmatch '^\d+$') { $syncIntervalHours = "6" }
   }
@@ -507,33 +507,45 @@ if (Test-Path $offlineLocal) {
 Invoke-Remote "chmod 0600 /home/root/hwr/conf/hwr.env /home/root/hwr/conf/jonobones-init-answers.txt 2>/dev/null; chmod 0755 /home/root/hwr/bin/rm2hwr /home/root/hwr/scripts/*.sh; true"
 Ok "Deployed"
 
-Info "Installing / updating BusyBox crontab for sync-recent (interval=$syncIntervalHours h)…"
-# Flatten to one remote command via bash -c is risky on BusyBox ash; use a temp script.
-$cronLocal = Join-Path $env:TEMP "rm2-install-cron.sh"
+Info "Installing systemd timer for sync-recent (interval=$syncIntervalHours h)…"
+# RM2 has systemctl but no crond; BusyBox crontab is a no-op on real hardware.
+Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\hwr-sync-recent.service") "/tmp/hwr-sync-recent.service"
+Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\hwr-sync-recent.timer") "/tmp/hwr-sync-recent.timer"
+$timerLocal = Join-Path $env:TEMP "rm2-install-timer.sh"
 @(
   '#!/bin/sh'
   'set -e'
-  'PATH=/home/root/.npm-global/bin:/home/root/opt/node/bin:/home/root/hwr/bin:/usr/bin:/bin'
-  'HWR=/home/root/hwr'
-  'MARK="# rm2hwr-sync-recent"'
-  'TMP=/tmp/rm2-crontab.new'
-  'crontab -l 2>/dev/null | grep -v sync-recent.sh | grep -v "rm2hwr-sync-recent" > "$TMP" || true'
-  "HOURS=$syncIntervalHours"
-  'if [ -n "$HOURS" ] && [ "$HOURS" -gt 0 ] 2>/dev/null; then'
-  '  echo "$MARK every ${HOURS}h" >> "$TMP"'
-  '  echo "17 */$HOURS * * * $HWR/scripts/sync-recent.sh >> /tmp/hwr-sync-recent.log 2>&1" >> "$TMP"'
-  '  crontab "$TMP"'
-  '  echo "crontab installed interval=$HOURS"'
-  'else'
-  '  if [ -s "$TMP" ]; then crontab "$TMP"; else crontab -r 2>/dev/null || true; fi'
-  '  echo "crontab sync-recent disabled (SYNC_INTERVAL_HOURS=0)"'
-  'fi'
-  'rm -f "$TMP"'
+  'HOURS=' + $syncIntervalHours
+  'UNIT_DIR=/etc/systemd/system'
   'chmod 0755 /home/root/hwr/scripts/sync-recent.sh'
-) | Set-Content -Encoding ascii $cronLocal
-Copy-ToRemote $cronLocal "/tmp/rm2-install-cron.sh"
-Invoke-Remote "chmod 0755 /tmp/rm2-install-cron.sh; sh /tmp/rm2-install-cron.sh; rm -f /tmp/rm2-install-cron.sh"
-Ok "Cron configured (SYNC_INTERVAL_HOURS=$syncIntervalHours)"
+  'cp /tmp/hwr-sync-recent.service "$UNIT_DIR/hwr-sync-recent.service"'
+  'cp /tmp/hwr-sync-recent.timer "$UNIT_DIR/hwr-sync-recent.timer"'
+  '# Drop any leftover sync-recent crontab line from older installers (harmless if no crontab)'
+  'if command -v crontab >/dev/null 2>&1; then'
+  '  TMP=/tmp/rm2-crontab.new'
+  '  crontab -l 2>/dev/null | grep -v sync-recent.sh | grep -v rm2hwr-sync-recent > "$TMP" || true'
+  '  if [ -s "$TMP" ]; then crontab "$TMP" 2>/dev/null || true; else crontab -r 2>/dev/null || true; fi'
+  '  rm -f "$TMP"'
+  'fi'
+  'if [ -n "$HOURS" ] && [ "$HOURS" -gt 0 ] 2>/dev/null; then'
+  '  # Rewrite OnUnitActiveSec from SYNC_INTERVAL_HOURS (OnBootSec stays 5min)'
+  '  sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=${HOURS}h/" "$UNIT_DIR/hwr-sync-recent.timer"'
+  '  systemctl daemon-reload'
+  '  systemctl enable hwr-sync-recent.timer'
+  '  systemctl start hwr-sync-recent.timer'
+  '  echo "systemd timer enabled interval=${HOURS}h"'
+  '  systemctl list-timers --all 2>/dev/null | grep -E "hwr-sync|NEXT|UNIT" || systemctl status hwr-sync-recent.timer --no-pager || true'
+  'else'
+  '  systemctl daemon-reload'
+  '  systemctl stop hwr-sync-recent.timer 2>/dev/null || true'
+  '  systemctl disable hwr-sync-recent.timer 2>/dev/null || true'
+  '  echo "systemd timer disabled (SYNC_INTERVAL_HOURS=0)"'
+  'fi'
+  'rm -f /tmp/hwr-sync-recent.service /tmp/hwr-sync-recent.timer'
+) | Set-Content -Encoding ascii $timerLocal
+Copy-ToRemote $timerLocal "/tmp/rm2-install-timer.sh"
+Invoke-Remote "chmod 0755 /tmp/rm2-install-timer.sh; sh /tmp/rm2-install-timer.sh; rm -f /tmp/rm2-install-timer.sh"
+Ok "Systemd timer configured (SYNC_INTERVAL_HOURS=$syncIntervalHours)"
 
 if ($SkipJonobones) {
   Ok "SkipJonobones set â€” done after deploy"
@@ -633,4 +645,4 @@ Write-Host "MyScript env:   /home/root/hwr/conf/hwr.env"
 Write-Host "API token env:  /home/root/hwr/conf/jonobones.env"
 Write-Host "Sync script:    /home/root/hwr/scripts/sync-recent.sh"
 Write-Host "Sync state:     /home/root/hwr/state/<doc-uuid>.json"
-Write-Host "Cron interval:  $syncIntervalHours h (0=disabled). Change SYNC_INTERVAL_HOURS in hwr.env + re-run installer, or crontab -e on tablet."
+Write-Host "Timer interval: $syncIntervalHours h (0=disabled). Change SYNC_INTERVAL_HOURS in hwr.env + re-run installer, or systemctl edit hwr-sync-recent.timer."

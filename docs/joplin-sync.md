@@ -96,13 +96,15 @@ Optional env: `JONOBONES_URL`, `JONOBONES_TOKEN`, `JONOBONES_PARENT_ID`, `JONOBO
 
 ### Periodic sync (`sync-recent.sh`)
 
-On-device cron (default every **6** hours) runs `/home/root/hwr/scripts/sync-recent.sh`:
+On-device **systemd timer** (default every **6** hours) runs /home/root/hwr/scripts/sync-recent.sh via hwr-sync-recent.service / hwr-sync-recent.timer (reMarkable 2 has systemctl but no crond; BusyBox crontab is a no-op on real hardware):
 
-1. Finds `DocumentType` notebooks with `lastModified` in the last 30 days
-2. SHA-256 + mtime each `.rm` page; skips if `/home/root/hwr/state/<doc-uuid>.json` matches
-3. Else `rm2hwr --uuid … --joplin-upsert` (`UPLOAD_MODE` from `hwr.env`, default **both**)
-4. Writes state sidecar **only on success** (`lastUploadedAt`, optional `joplinNoteId`, per-page hashes)
+1. Finds DocumentType notebooks with lastModified in the last 30 days
+2. SHA-256 + mtime each .rm page; skips if /home/root/hwr/state/<doc-uuid>.json matches
+3. Else 
+m2hwr --uuid … --joplin-upsert (UPLOAD_MODE from hwr.env, default **both**)
+4. Writes state sidecar **only on success** (lastUploadedAt, optional joplinNoteId, per-page hashes)
 
-Change interval: `SYNC_INTERVAL_HOURS` in `hwr.env` + re-run installer, or `crontab -e` on the tablet.  
-Disable: set `SYNC_INTERVAL_HOURS=0` and re-run installer, or remove the `sync-recent.sh` crontab line.
+Change interval: SYNC_INTERVAL_HOURS in hwr.env + re-run installer (rewrites OnUnitActiveSec), or systemctl edit hwr-sync-recent.timer.  
+Disable: set SYNC_INTERVAL_HOURS=0 and re-run installer, or systemctl disable --now hwr-sync-recent.timer.  
+Check: systemctl list-timers | grep hwr-sync · one-shot: systemctl start hwr-sync-recent.service.
 
