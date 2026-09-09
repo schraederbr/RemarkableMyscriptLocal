@@ -109,8 +109,8 @@ func TestClampPressure(t *testing.T) {
 func TestDropShortStroke(t *testing.T) {
 	var buf bytes.Buffer
 	writeHeaderV5(&buf)
-	_ = binary.Write(&buf, binary.LittleEndian, uint32(1)) // layers
-	_ = binary.Write(&buf, binary.LittleEndian, uint32(1)) // strokes
+	_ = binary.Write(&buf, binary.LittleEndian, uint32(1))                    // layers
+	_ = binary.Write(&buf, binary.LittleEndian, uint32(1))                    // strokes
 	writeStroke(&buf, BrushBallpointV5, []Point{{X: 1, Y: 1, Pressure: 0.5}}) // 1 point → drop
 	page, err := Parse(&buf)
 	if err != nil {

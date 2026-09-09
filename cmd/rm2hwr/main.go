@@ -15,7 +15,7 @@ import (
 	"github.com/schraederbr/RemarkableMyscriptLocal/internal/handoff"
 	"github.com/schraederbr/RemarkableMyscriptLocal/internal/myscript"
 	"github.com/schraederbr/RemarkableMyscriptLocal/internal/notebook"
-	"github.com/schraederbr/RemarkableMyscriptLocal/internal/rmv5"
+	"github.com/schraederbr/RemarkableMyscriptLocal/internal/rm"
 )
 
 func main() {
@@ -152,7 +152,7 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 			continue
 		}
 
-		page, err := rmv5.ParseFile(pref.RMPath)
+		page, err := rm.ParseFile(pref.RMPath)
 		if err != nil {
 			log.Printf("%s: parse: %v", linePrefix, err)
 			indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tERROR", pref.Index, pref.PageUUID))

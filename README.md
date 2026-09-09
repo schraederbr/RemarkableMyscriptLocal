@@ -55,7 +55,7 @@ Handoff details: [docs/joplin-sync.md](docs/joplin-sync.md) · RM2 port notes: [
 
 | Piece | Role |
 |-------|------|
-| `rm2hwr` | Parse `.rm`, call MyScript, write `out/<uuid>/` |
+| `rm2hwr` | Parse `.rm` (v5 + v6 auto-detect), call MyScript, write `out/<uuid>/` |
 | Node 20 + jonobones | Local Joplin vault + **direct sync** to Joplin Cloud/Server/WebDAV |
 | Revcord `node_sqlite3.node` | ARMv7 sqlite binding (vendored in `third_party/revcord/`) |
 | `joplin-upsert.js` | Title-match upsert into jonobones API (`127.0.0.1:26637`) |
@@ -113,11 +113,25 @@ make build-armv7   # → dist/rm2hwr-linux-armv7
 # Windows: powershell -File scripts/build-armv7.ps1
 ```
 
+## `.rm` formats
+
+`rm2hwr` reads the 43-byte `.rm` header and auto-dispatches:
+
+| Header | Parser | Notes |
+|--------|--------|-------|
+| `version=5` | `internal/rmv5` | Classic stroke layers |
+| `version=6` | `internal/rmv6` | Firmware 3+ SceneLineItem strokes (typed text ignored for HWR) |
+| other | error | Clear unsupported-version message |
+
+v6 coordinates are converted from page-centre X / top Y into the same top-left portrait space MyScript expects (1404×1872).
+
 ## Packages
 
 | Package | Role |
 |---------|------|
+| `internal/rm` | `.rm` auto-dispatch (v5 / v6 by header) |
 | `internal/rmv5` | v5 `.rm` parser |
+| `internal/rmv6` | v6 `.rm` SceneLineItem → strokes |
 | `internal/myscript` | batch JSON, HMAC-SHA512, HTTP |
 | `internal/notebook` | xochitl discovery |
 | `internal/handoff` | `NOTE.md` + `HANDOFF.json` |

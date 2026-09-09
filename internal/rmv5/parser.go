@@ -35,24 +35,24 @@ const (
 
 // Brush IDs (v5).
 const (
-	BrushPaintbrushV5    uint32 = 12
-	BrushMechPencilV5    uint32 = 13
-	BrushPencilV5        uint32 = 14
-	BrushBallpointV5     uint32 = 15
-	BrushMarkerV5        uint32 = 16
-	BrushFinelinerV5     uint32 = 17
-	BrushHighlighterV5   uint32 = 18
-	BrushEraserV3        uint32 = 6
-	BrushEraseAreaV3     uint32 = 8
+	BrushPaintbrushV5  uint32 = 12
+	BrushMechPencilV5  uint32 = 13
+	BrushPencilV5      uint32 = 14
+	BrushBallpointV5   uint32 = 15
+	BrushMarkerV5      uint32 = 16
+	BrushFinelinerV5   uint32 = 17
+	BrushHighlighterV5 uint32 = 18
+	BrushEraserV3      uint32 = 6
+	BrushEraseAreaV3   uint32 = 8
 )
 
 // Point is one sample along a stroke.
 type Point struct {
-	X, Y      float32
-	Speed     float32
-	Tilt      float32
-	Width     float32
-	Pressure  float32
+	X, Y     float32
+	Speed    float32
+	Tilt     float32
+	Width    float32
+	Pressure float32
 }
 
 // Stroke is a single pen stroke.
@@ -96,7 +96,7 @@ func Parse(r io.Reader) (*Page, error) {
 		if i := strings.Index(header, "version="); i >= 0 {
 			ver = strings.TrimSpace(header[i+len("version="):])
 		}
-		return nil, fmt.Errorf("rmv5: unsupported .rm version %q (only version=5 is supported; v3/v6 rejected)", ver)
+		return nil, fmt.Errorf("rmv5: unsupported .rm version %q (this package only parses version=5; use internal/rm for auto-dispatch)", ver)
 	}
 
 	var nLayers uint32
