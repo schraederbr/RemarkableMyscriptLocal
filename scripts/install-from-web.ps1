@@ -1,13 +1,13 @@
-﻿<#
+<#
 .SYNOPSIS
   One-liner Windows bootstrap: download RemarkableMyscriptLocal release + assets, then run install-rm2-stack.ps1.
 
 .DESCRIPTION
   Intended for:
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.0/scripts/install-from-web.ps1 | iex"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.1/scripts/install-from-web.ps1 | iex"
 
   Defaults (override via env):
-    RELEASE_TAG / RM2_RELEASE_TAG = v0.3.0
+    RELEASE_TAG / RM2_RELEASE_TAG = v0.3.1
     HOST                           = 10.11.99.1
 
   Prerequisites (printed up front):
@@ -25,7 +25,7 @@ function Warn($msg) { Write-Host "!!  $msg" -ForegroundColor Yellow }
 
 $ReleaseTag = $env:RELEASE_TAG
 if (-not $ReleaseTag) { $ReleaseTag = $env:RM2_RELEASE_TAG }
-if (-not $ReleaseTag) { $ReleaseTag = "v0.3.0" }
+if (-not $ReleaseTag) { $ReleaseTag = "v0.3.1" }
 
 $HostName = $env:HOST
 if (-not $HostName) { $HostName = "10.11.99.1" }
