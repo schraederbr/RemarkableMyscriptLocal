@@ -10,9 +10,12 @@ No Node, Python, or JVM — one static `linux/arm` (`GOARM=7`) binary.
 /home/root/hwr/
   bin/rm2hwr
   conf/hwr.env          # mode 0600 — never commit real keys
+  scripts/joplin-upsert.js
   out/<doc-uuid>/<page-uuid>.txt
   out/<doc-uuid>/<page-uuid>.json   # optional debug body
   out/<doc-uuid>/INDEX.txt
+  out/<doc-uuid>/NOTE.md            # concatenated markdown for Joplin
+  out/<doc-uuid>/HANDOFF.json       # agent / upsert payload
   README
 ```
 
@@ -42,7 +45,7 @@ HTTP headers: `applicationKey: <APP_KEY>`, `hmac: <hex>`.
 
 ```
 rm2hwr --all | --name SUBSTR | --uuid DOC
-       [--page PAGE] [--dry-run]
+       [--page PAGE] [--dry-run] [--joplin-upsert]
        [--xochitl DIR] [--outdir DIR] [--env FILE]
 ```
 
@@ -55,6 +58,8 @@ Exactly one of `--all` / `--name` / `--uuid` is required.
 | `--env` | `/home/root/hwr/conf/hwr.env` |
 | `--dry-run` | write MyScript JSON only; skip HTTP |
 | `--page` | limit to one page UUID |
+| `--joplin-upsert` | after HWR, run `scripts/joplin-upsert.js` against the doc out dir |
+| `--joplin-upsert-bin` | default `/home/root/hwr/scripts/joplin-upsert.js` |
 
 Pages whose output `.txt` is **newer** than the `.rm` are skipped. Empty pages write an empty `.txt` and skip HTTP. Never writes into `.rm` / `.content` / `.metadata`.
 
@@ -96,6 +101,24 @@ ssh root@10.11.99.1 'chmod 0755 /home/root/hwr/bin/rm2hwr; chmod 0600 /home/root
 ssh root@10.11.99.1 '/home/root/hwr/bin/rm2hwr --name "9-8" --dry-run'
 ```
 
+
+
+## Joplin / jonobones sync
+
+After recognition, `rm2hwr` always writes `NOTE.md` + `HANDOFF.json` next to `INDEX.txt`.
+Title is the notebook `visibleName` (exact match in Joplin).
+
+See [docs/joplin-sync.md](docs/joplin-sync.md) for the handoff schema and upsert details.
+
+```bash
+# on device, with jonobones running:
+scp scripts/joplin-upsert.js root@10.11.99.1:/home/root/hwr/scripts/
+ssh root@10.11.99.1 'export PATH=/home/root/.npm-global/bin:/home/root/opt/node/bin:$PATH
+  /home/root/hwr/bin/rm2hwr --name "9-8" --joplin-upsert'
+```
+
+Agent pipeline: RemarkableMyScript finishes HWR → SendToAgent Jonobones with `HANDOFF.json` fields → Jonobones appends/creates the Joplin note.
+
 ## Packages
 
 | Package | Role |
@@ -103,6 +126,7 @@ ssh root@10.11.99.1 '/home/root/hwr/bin/rm2hwr --name "9-8" --dry-run'
 | `internal/rmv5` | v5 `.rm` parser (LE); keeps brushes 12–17; drops highlighter/eraser |
 | `internal/myscript` | batch JSON, HMAC-SHA512, HTTP client |
 | `internal/notebook` | xochitl discovery via `.metadata` / `.content` |
+| `internal/handoff` | NOTE.md + HANDOFF.json assembly |
 | `cmd/rm2hwr` | CLI |
 
 ### Parser notes
