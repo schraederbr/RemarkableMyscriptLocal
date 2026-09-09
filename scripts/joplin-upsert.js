@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Upsert HWR NOTE.md / HANDOFF.json into jonobones by exact title.
 // Optionally uploads page SVGs as Joplin resources and rewrites ![Page N](file.svg) → :/id.
+// Updates REPLACE the marked HWR block (<!-- rm2hwr:begin --> … <!-- rm2hwr:end -->)
+// instead of appending forever; user content outside the markers is preserved.
 // Usage:
 //   node joplin-upsert.js /home/root/hwr/out/<doc-uuid>
 //   node joplin-upsert.js --handoff /path/HANDOFF.json
@@ -13,6 +15,11 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+
+const HWR_BEGIN = '<!-- rm2hwr:begin -->';
+const HWR_END = '<!-- rm2hwr:end -->';
+// Legacy append separators from earlier joplin-upsert versions
+const OLD_SEP_RE = /<!--\s*rm2hwr\b(?!:begin|:end)[^>]*-->/;
 
 function die(msg, code = 1) {
   console.error('joplin-upsert:', msg);
@@ -30,7 +37,6 @@ function loadToken() {
   const cfgPath = path.join(profile, 'config.json5');
   if (fs.existsSync(cfgPath)) {
     const raw = fs.readFileSync(cfgPath, 'utf8').replace(/^\s*\/\/.*$/gm, '');
-    // minimal json5: allow trailing commas stripped roughly via JSON after comment strip
     try {
       const cfg = JSON.parse(raw);
       if (cfg.api && cfg.api.token) return cfg.api.token;
@@ -98,7 +104,6 @@ async function api(base, token, method, route, body) {
  * Joplin / jonobones: POST /resources multipart with fields:
  *   data = file, props = JSON string (required even if "{}")
  * Endpoint is under the same /v1 base as notes (e.g. http://127.0.0.1:26637/v1/resources).
- * If your build returns 404, confirm jonobones exposes /resources like desktop Joplin Clipper API.
  */
 async function uploadResource(base, token, filePath, title) {
   const buf = fs.readFileSync(filePath);
@@ -135,7 +140,6 @@ function wantText(mode) {
 async function buildBodyWithResources(base, token, payload, dir, mode) {
   let body = payload.fullText || '';
   if (!body && Array.isArray(payload.pages)) {
-    // Minimal rebuild if fullText missing
     const lines = ['# ' + (payload.title || '')];
     let first = true;
     for (const p of payload.pages) {
@@ -180,7 +184,6 @@ async function buildBodyWithResources(base, token, payload, dir, mode) {
     if (localRe.test(body)) {
       body = body.replace(localRe, embed);
     } else {
-      // Append under the matching heading if present, else append at end of page section.
       const heading = '## Page ' + pageN;
       const idx = body.indexOf(heading);
       if (idx >= 0) {
@@ -199,9 +202,67 @@ function escapeRegExp(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function separator(docUuid) {
+/** Wrap HWR markdown in stable HTML-comment markers for replace-on-update. */
+function wrapHwrBlock(hwrBody, docUuid) {
   const ts = new Date().toISOString();
-  return `\n\n---\n\n<!-- rm2hwr ${ts} doc=${docUuid || ''} -->\n\n`;
+  const meta = '<!-- rm2hwr:meta ts=' + ts + ' doc=' + (docUuid || '') + ' -->';
+  const inner = String(hwrBody || '').replace(/^\n+/, '').replace(/\n+$/, '');
+  return HWR_BEGIN + '\n' + meta + '\n\n' + inner + '\n\n' + HWR_END;
+}
+
+function looksLikeHwrOnly(body) {
+  const t = String(body || '').trim();
+  if (!t) return true;
+  if (/^#\s/.test(t) && /##\s+Page\s+\d+/.test(t)) return true;
+  const m = t.match(OLD_SEP_RE);
+  if (m) {
+    const before = t.slice(0, t.indexOf(m[0])).trim();
+    if (!before || before === '---') return true;
+  }
+  return false;
+}
+
+/**
+ * Merge new HWR into an existing note body:
+ * - If <!-- rm2hwr:begin -->…<!-- rm2hwr:end --> exist, replace that span.
+ * - Else migrate legacy <!-- rm2hwr … --> append separators into one marked block
+ *   (preserve content before the first separator).
+ * - Else if body looks like only prior HWR output, overwrite with marked block.
+ * - Else append a new marked block (preserves unknown user content once).
+ */
+function mergeHwrIntoBody(existingBody, hwrBody, docUuid) {
+  const marked = wrapHwrBlock(hwrBody, docUuid);
+  const existing = existingBody == null ? '' : String(existingBody);
+
+  const beginIdx = existing.indexOf(HWR_BEGIN);
+  const endIdx = existing.indexOf(HWR_END);
+  if (beginIdx >= 0 && endIdx > beginIdx) {
+    const afterEnd = endIdx + HWR_END.length;
+    const before = existing.slice(0, beginIdx).replace(/\s+$/, '');
+    const after = existing.slice(afterEnd).replace(/^\s+/, '');
+    const parts = [];
+    if (before) parts.push(before);
+    parts.push(marked.trimEnd());
+    if (after) parts.push(after);
+    return parts.join('\n\n') + (after ? '' : '\n');
+  }
+
+  const oldMatch = existing.match(OLD_SEP_RE);
+  if (oldMatch) {
+    const idx = existing.indexOf(oldMatch[0]);
+    let before = existing.slice(0, idx).replace(/\s+$/, '').replace(/\n*---\s*$/, '').replace(/\s+$/, '');
+    if (!before || looksLikeHwrOnly(before)) {
+      return marked + '\n';
+    }
+    return before + '\n\n' + marked + '\n';
+  }
+
+  if (looksLikeHwrOnly(existing)) {
+    return marked + '\n';
+  }
+
+  const trimmed = existing.replace(/\s+$/, '');
+  return trimmed + '\n\n' + marked + '\n';
 }
 
 async function main() {
@@ -214,7 +275,6 @@ async function main() {
   const noteBody = await buildBodyWithResources(base, token, payload, dir, mode);
   if (!noteBody || !String(noteBody).trim()) die('handoff missing body (fullText / pages)');
 
-  // Find by exact title (paginate)
   let page = 1;
   let found = null;
   for (;;) {
@@ -223,7 +283,7 @@ async function main() {
       limit: '100',
       fields: 'id,title,body,parent_id',
       order_by: 'updated_time',
-      order_dir: 'desc',
+      order_dir: 'DESC',
     });
     const list = await api(base, token, 'GET', '/notes?' + q.toString());
     const items = (list && list.items) || [];
@@ -232,9 +292,11 @@ async function main() {
     page++;
   }
 
+  let noteId = null;
   if (found) {
-    const body = (found.body || '') + separator(payload.docUuid) + noteBody;
+    const body = mergeHwrIntoBody(found.body || '', noteBody, payload.docUuid);
     await api(base, token, 'PATCH', '/notes/' + found.id, { body });
+    noteId = found.id;
     console.log('updated note', found.id, JSON.stringify(payload.title), 'mode=' + mode);
   } else {
     let parentId = process.env.JONOBONES_PARENT_ID || '';
@@ -248,9 +310,14 @@ async function main() {
     const created = await api(base, token, 'POST', '/notes', {
       parent_id: parentId,
       title: payload.title,
-      body: noteBody,
+      body: wrapHwrBlock(noteBody, payload.docUuid) + '\n',
     });
-    console.log('created note', created && created.id, JSON.stringify(payload.title), 'mode=' + mode);
+    noteId = created && created.id;
+    console.log('created note', noteId, JSON.stringify(payload.title), 'mode=' + mode);
+  }
+
+  if (noteId) {
+    console.log('NOTE_ID=' + noteId);
   }
 
   try {

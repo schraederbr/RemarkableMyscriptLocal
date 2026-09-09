@@ -12,6 +12,7 @@ Gather these **before** running `scripts/install-rm2-stack.ps1`. The installer a
 | MyScript account + `APP_KEY` | [Sign up / console](https://developer.myscript.com/) | HWR (required) |
 | MyScript `HMAC_KEY` | Same app (optional) | Blank OK if HMAC disabled |
 | Joplin **upload mode** | Installer prompt (or `UPLOAD_MODE` in secrets) | `text` / `svg` / `both` (default **both**) |
+| **Sync interval (hours)** | Installer prompt (or `SYNC_INTERVAL_HOURS`) | Default **6**; `0` skips cron |
 | Joplin Cloud email + password | [joplincloud.com](https://joplincloud.com/) | **Direct sync** via jonobones on the tablet |
 
 WebDAV / Nextcloud / Joplin Server: use URL + username + password instead (`SYNC_TARGET` in `conf/install.secrets.example`).
@@ -38,3 +39,5 @@ The long on-device job runs under `nohup`. While `install-rm2-stack.ps1` (or `.s
 On-device logs: `/tmp/rm2-install.log`, `/tmp/jonobones-start.log`.  
 Upsert uses `http://127.0.0.1:26637` and the token in `/home/root/hwr/conf/jonobones.env`.  
 Recognized notes sync to Joplin through jonobones â€” keep Wi-Fi on for ongoing sync.
+
+Periodic job: `sync-recent.sh` via BusyBox crontab (default every 6h). State: `/home/root/hwr/state/`. Log: `/tmp/hwr-sync-recent.log`. Change/disable: see [joplin-sync.md](joplin-sync.md).
