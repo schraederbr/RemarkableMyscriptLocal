@@ -10,11 +10,21 @@ Pipeline:
 
 You do **not** need desktop Joplin open for the sync path. The tablet talks to Joplin Cloud (or your sync target) through jonobones.
 
-> **Wi-Fi required** for Joplin Cloud sync (and MyScript). Install can use the **offline npm Release asset** (no registry on the tablet). USB is fine for SSH/deploy.`n`nOffline bundle docs: [docs/offline-npm-bundle.md](docs/offline-npm-bundle.md).
+> **Wi-Fi required** for Joplin Cloud sync (and MyScript). Install can use the **offline npm Release asset** (no registry on the tablet). USB is fine for SSH/deploy.
+
+Offline bundle docs: [docs/offline-npm-bundle.md](docs/offline-npm-bundle.md).
 
 ## Quick install
 
-From a Windows PC that can SSH to the tablet (USB `10.11.99.1` or Wi-Fi IP):
+**One-liner** (Windows PC, USB `10.11.99.1` by default — no local clone or Go required):
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.0/scripts/install-from-web.ps1 | iex"
+```
+
+Downloads the `v0.3.0` source + release assets over HTTPS, then runs `install-rm2-stack.ps1 -SkipBuild`.
+
+From a local clone (optional):
 
 ```powershell
 cd RemarkableMyscriptLocal
@@ -23,11 +33,12 @@ powershell -NoProfile -File .\scripts\install-rm2-stack.ps1
 
 Have ready (see [docs/install-checklist.md](docs/install-checklist.md)):
 
+- **USB cable** (or set `HOST` to the tablet Wi-Fi IP)
 - reMarkable SSH password (installer installs your PC SSH key once — no manual key setup)
 - MyScript `APP_KEY` (optional `HMAC_KEY`) from [developer.myscript.com](https://developer.myscript.com/)
+- Joplin Cloud email + password (or another sync target)
 - Joplin upload mode: text / SVG / both (installer default: both)
 - Periodic sync interval hours (installer default: **6**; `0` disables systemd timer)
-- Joplin Cloud email + password (or another sync target)
 - Optional E2EE master password
 - **Tablet on Wi-Fi with internet**
 
