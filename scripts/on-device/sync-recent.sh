@@ -168,7 +168,7 @@ while read -r action uuid; do
 
   log "run $uuid"
   set +e
-  "$BIN" --uuid "$uuid" --joplin-upsert --upload-mode "$UPLOAD_MODE" >>"$LOG" 2>&1
+  "$BIN" --uuid "$uuid" --joplin-upsert >>"$LOG" 2>&1
   ec=$?
   set -e
   if [ "$ec" -ne 0 ]; then
