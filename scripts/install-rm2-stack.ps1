@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Host-side installer for rm2hwr + jonobones on reMarkable 2.
 
@@ -136,7 +136,7 @@ $hmacKey = $sec["HMAC_KEY"]
 $lang = if ($sec["LANG"]) { $sec["LANG"] } else { "en_US" }
 if (-not $appKey) {
   Write-Host ""
-  Write-Host "MyScript Cloud â€” create a free app and copy keys:"
+  Write-Host "MyScript Cloud - create a free app and copy keys:"
   Write-Host "  https://developer.myscript.com/"
   Write-Host ""
   $appKey = Ask "MyScript APP_KEY"
@@ -260,7 +260,7 @@ $choiceMap = @{
 }
 $answersPath = Join-Path $RepoRoot "conf\jonobones-init-answers.txt"
 $answerLines = New-Object System.Collections.Generic.List[string]
-# overwrite confirm is only consumed if config already exists â€” host cannot know for sure,
+# overwrite confirm is only consumed if config already exists - host cannot know for sure,
 # so we always prepend overwrite answer; if no config, that first line becomes the choice
 # and breaks. Probe remote after SSH instead.
 
@@ -296,7 +296,7 @@ function Ensure-RmSshKey([string]$password) {
   # Prefer Git Bash (NOT WSL). Pass password via env to the bash helper.
   $gitBash = Find-GitBash
   if ($gitBash) {
-    Info "Installing PC SSH key on tablet via Git Bash (password once)â€¦"
+    Info "Installing PC SSH key on tablet via Git Bash (password once)..."
     $env:RM_SSH_PASSWORD = $password
     try {
       & $gitBash $helper "${User}@${HostName}"
@@ -306,7 +306,7 @@ function Ensure-RmSshKey([string]$password) {
     }
   } else {
     # Native OpenSSH ASKPASS fallback (no Python, no WSL, no Git Bash)
-    Info "Git Bash not found â€” using OpenSSH ASKPASS to install keyâ€¦"
+    Info "Git Bash not found - using OpenSSH ASKPASS to install key..."
     $sshDir = Join-Path $env:USERPROFILE ".ssh"
     New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
     $pub = Join-Path $sshDir "id_ed25519.pub"
@@ -351,7 +351,7 @@ type "$pwFile"
   if (-not (Test-RmKeyAuth)) {
     throw "SSH key install attempted but BatchMode auth still fails"
   }
-  Ok "SSH key installed â€” password not needed for the rest of this install"
+  Ok "SSH key installed - password not needed for the rest of this install"
 }
 
 function Invoke-Remote([string]$remoteCmd) {
@@ -371,10 +371,10 @@ function Invoke-RemoteCapture([string]$remoteCmd) {
   return ($out | Out-String).Trim()
 }
 
-Info "Ensuring SSH key auth (password used at most once)â€¦"
+Info "Ensuring SSH key auth (password used at most once)..."
 Ensure-RmSshKey $sshPassword
 
-Info "Checking SSHâ€¦"
+Info "Checking SSH..."
 try {
   Invoke-Remote "uname -m"
   Ok "SSH works"
@@ -386,11 +386,11 @@ try {
 $arch = Invoke-RemoteCapture "uname -m"
 if ($arch -ne "armv7l") { throw "Expected armv7l, got '$arch'" }
 
-Info "Checking tablet internet (Wi-Fi required for npm + Joplin Cloud)â€¦"
+Info "Checking tablet internet (Wi-Fi required for npm + Joplin Cloud)..."
 $net = Invoke-RemoteCapture "ping -c 1 -W 3 1.1.1.1 >/dev/null 2>&1 && echo yes || echo no"
 if ($net -ne "yes") {
   Warn "Tablet has no internet right now."
-  Warn "Turn on Wi-Fi before continuing â€” npm install and Joplin Cloud sync will fail without it."
+  Warn "Turn on Wi-Fi before continuing - npm install and Joplin Cloud sync will fail without it."
   if (-not (AskYes "Continue anyway?" $false)) { throw "Aborted: tablet needs Wi-Fi/internet" }
 } else {
   Ok "Tablet can reach the internet"
@@ -422,17 +422,71 @@ if ($doInit) {
   if (Test-Path $answersPath) { Remove-Item $answersPath -Force }
 }
 
-# --- build ---
-$dist = Join-Path $RepoRoot "dist\rm2hwr-linux-armv7"
-if (-not $SkipBuild) {
-  if (AskYes "Cross-compile rm2hwr for linux/armv7?" $true) {
-    Info "Buildingâ€¦"
+# --- binary (prefer dist/, else HTTPS release download; Go optional) ---
+$distDir = Join-Path $RepoRoot "dist"
+New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+$dist = Join-Path $distDir "rm2hwr-linux-armv7"
+$releaseTag = $env:RM2_RELEASE_TAG
+if (-not $releaseTag) { $releaseTag = $env:RELEASE_TAG }
+if (-not $releaseTag) { $releaseTag = "v0.3.0" }
+$releaseAssetBase = "https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/$releaseTag"
+
+function Get-ReleaseAssetHttps([string]$Name, [string]$OutFile, [int]$MinSize = 100000) {
+  $url = "$releaseAssetBase/$Name"
+  Info "Downloading release asset via HTTPS: $Name ($releaseTag)"
+  $prevProgress = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
+  try {
+    Invoke-WebRequest -Uri $url -OutFile $OutFile -UseBasicParsing
+  } finally {
+    $ProgressPreference = $prevProgress
+  }
+  if (-not (Test-Path $OutFile) -or (Get-Item $OutFile).Length -lt $MinSize) {
+    throw "HTTPS download failed or too small: $OutFile from $url"
+  }
+  Ok ("Downloaded {0} ({1:N0} bytes)" -f $OutFile, (Get-Item $OutFile).Length)
+}
+
+function Test-GoAvailable {
+  try {
+    $null = & go version 2>$null
+    return ($LASTEXITCODE -eq 0)
+  } catch {
+    return $false
+  }
+}
+
+$haveBinary = (Test-Path $dist) -and ((Get-Item $dist).Length -gt 100000)
+if ($haveBinary) {
+  Ok "Using existing binary $dist"
+} else {
+  # Prefer HTTPS release download (one-liner / no Go path)
+  try {
+    Get-ReleaseAssetHttps "rm2hwr-linux-armv7" $dist 100000
+    $haveBinary = $true
+  } catch {
+    Warn "Release binary download failed: $_"
+  }
+}
+
+if (-not $haveBinary) {
+  $goOk = Test-GoAvailable
+  $wantBuild = $false
+  if ($SkipBuild) {
+    throw "dist/rm2hwr-linux-armv7 missing and -SkipBuild set. Download release assets or omit -SkipBuild with Go installed."
+  }
+  if ($goOk) {
+    # Default NO for one-liner-friendly path; only build when user opts in
+    $wantBuild = AskYes "dist/rm2hwr-linux-armv7 missing. Cross-compile with local Go?" $false
+  } else {
+    throw "dist/rm2hwr-linux-armv7 missing, HTTPS release download failed, and Go is not available. Install Go or place the release binary in dist/."
+  }
+  if ($wantBuild) {
+    Info "Building rm2hwr for linux/armv7..."
     $buildPs1 = Join-Path $RepoRoot "scripts\build-armv7.ps1"
     if (Test-Path $buildPs1) { & powershell -NoProfile -File $buildPs1 }
     else {
       Push-Location $RepoRoot
       $env:CGO_ENABLED = "0"; $env:GOOS = "linux"; $env:GOARCH = "arm"; $env:GOARM = "7"
-      New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "dist") | Out-Null
       try {
         go build -o $dist ./cmd/rm2hwr
       } finally {
@@ -443,42 +497,89 @@ if (-not $SkipBuild) {
       }
       Pop-Location
     }
-    if (-not (Test-Path $dist)) { throw "build missing $dist" }
+    if (-not (Test-Path $dist) -or (Get-Item $dist).Length -lt 100000) { throw "build missing $dist" }
     Ok "Built $dist"
+    $haveBinary = $true
+  } else {
+    throw "No rm2hwr binary available. Re-run and allow download/build, or copy rm2hwr-linux-armv7 into dist/."
   }
 }
 
-# Prefetch Node tarball on the PC (tablet often lacks curl/wget; Wi-Fi still needed for npm/Joplin)
+# Prefetch Node tarball: prefer dist/, then TEMP, else nodejs.org
 $nodeVer = "20.20.2"
-$nodeTar = Join-Path $env:TEMP "node-v$nodeVer-linux-armv7l.tar.xz"
-if (-not (Test-Path $nodeTar) -or (Get-Item $nodeTar).Length -lt 1000000) {
-  Info "Downloading Node $nodeVer armv7l on the PC (tablet often has no curl)â€¦"
-  $prevProgress = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
-  Invoke-WebRequest -Uri "https://nodejs.org/dist/v$nodeVer/node-v$nodeVer-linux-armv7l.tar.xz" -OutFile $nodeTar -UseBasicParsing
-  $ProgressPreference = $prevProgress
+$nodeTarName = "node-v$nodeVer-linux-armv7l.tar.xz"
+$nodeTarDist = Join-Path $distDir $nodeTarName
+$nodeTar = Join-Path $env:TEMP $nodeTarName
+if ((Test-Path $nodeTarDist) -and ((Get-Item $nodeTarDist).Length -ge 1000000)) {
+  $nodeTar = $nodeTarDist
+  Ok "Using Node tarball from dist/: $nodeTar"
+} elseif (-not (Test-Path $nodeTar) -or (Get-Item $nodeTar).Length -lt 1000000) {
+  # Try release asset first (same offline-friendly path as one-liner)
+  try {
+    Get-ReleaseAssetHttps $nodeTarName $nodeTarDist 1000000
+    $nodeTar = $nodeTarDist
+  } catch {
+    Warn "Release Node tarball unavailable; falling back to nodejs.org: $_"
+    Info "Downloading Node $nodeVer armv7l on the PC (tablet often has no curl)..."
+    $prevProgress = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
+    try {
+      Invoke-WebRequest -Uri "https://nodejs.org/dist/v$nodeVer/$nodeTarName" -OutFile $nodeTar -UseBasicParsing
+    } finally {
+      $ProgressPreference = $prevProgress
+    }
+  }
+} else {
+  Ok "Using Node tarball from TEMP: $nodeTar"
 }
 
-# Offline jonobones npm bundle (GitHub Release asset, or local dist/)
+# Offline jonobones npm bundle (local dist/, else gh, else HTTPS release)
 $offlineName = "jonobones-rm2-npm-offline-0.1.5-joplin-3.7.1.tar.gz"
-$offlineLocal = Join-Path $RepoRoot "dist\$offlineName"
+$offlineLocal = Join-Path $distDir $offlineName
 if (-not (Test-Path $offlineLocal) -or (Get-Item $offlineLocal).Length -lt 1000000) {
-  Info "Fetching offline npm bundle from GitHub Releasesâ€¦"
-  New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "dist") | Out-Null
+  Info "Fetching offline npm bundle from GitHub Releases..."
   $prevProgress = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
+  $ghOk = $false
   try {
-    & gh release download --repo schraederbr/RemarkableMyscriptLocal --pattern $offlineName --dir (Join-Path $RepoRoot "dist") --clobber
+    & gh release download --repo schraederbr/RemarkableMyscriptLocal --pattern $offlineName --dir $distDir --clobber
+    if ((Test-Path $offlineLocal) -and ((Get-Item $offlineLocal).Length -ge 1000000)) { $ghOk = $true }
   } catch {
-    Warn "gh release download failed â€” will try npm on-device (needs Wi-Fi): $_"
+    Warn "gh release download failed: $_"
   }
   $ProgressPreference = $prevProgress
+  if (-not $ghOk) {
+    try {
+      Get-ReleaseAssetHttps $offlineName $offlineLocal 1000000
+    } catch {
+      Warn "HTTPS release download of offline npm bundle failed - will try npm on-device (needs Wi-Fi): $_"
+    }
+  }
 }
-if (Test-Path $offlineLocal) {
+if ((Test-Path $offlineLocal) -and ((Get-Item $offlineLocal).Length -ge 1000000)) {
   Ok "Offline npm bundle ready: $offlineLocal"
 } else {
-  Warn "No offline npm bundle â€” on-device npm install will need Wi-Fi"
+  Warn "No offline npm bundle - on-device npm install will need Wi-Fi"
 }
 
-Info "Deploying filesâ€¦"
+# Ensure sqlite binding exists where deployer expects it
+$sqliteDist = Join-Path $distDir "node_sqlite3.node"
+$sqliteRev = Join-Path $RepoRoot "third_party\revcord\node_sqlite3.node"
+if (-not (Test-Path $sqliteRev) -or (Get-Item $sqliteRev).Length -lt 100000) {
+  if ((Test-Path $sqliteDist) -and ((Get-Item $sqliteDist).Length -ge 100000)) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $sqliteRev) | Out-Null
+    Copy-Item -Force $sqliteDist $sqliteRev
+    Ok "Copied node_sqlite3.node from dist/ into third_party/revcord"
+  } else {
+    try {
+      Get-ReleaseAssetHttps "node_sqlite3.node" $sqliteDist 100000
+      New-Item -ItemType Directory -Force -Path (Split-Path $sqliteRev) | Out-Null
+      Copy-Item -Force $sqliteDist $sqliteRev
+    } catch {
+      throw "Missing third_party/revcord/node_sqlite3.node and could not download it: $_"
+    }
+  }
+}
+
+Info "Deploying files..."
 Invoke-Remote "mkdir -p /home/root/hwr/bin /home/root/hwr/conf /home/root/hwr/scripts /home/root/hwr/out /home/root/hwr/state /home/root/hwr/third_party/revcord /home/root/downloads"
 if (Test-Path $dist) {
   Copy-ToRemote $dist "/home/root/hwr/bin/rm2hwr"
@@ -507,7 +608,7 @@ if (Test-Path $offlineLocal) {
 Invoke-Remote "chmod 0600 /home/root/hwr/conf/hwr.env /home/root/hwr/conf/jonobones-init-answers.txt 2>/dev/null; chmod 0755 /home/root/hwr/bin/rm2hwr /home/root/hwr/scripts/*.sh; true"
 Ok "Deployed"
 
-Info "Installing systemd timer for sync-recent (interval=$syncIntervalHours h)…"
+Info "Installing systemd timer for sync-recent (interval=$syncIntervalHours h)..."
 # RM2 has systemctl but no crond; BusyBox crontab is a no-op on real hardware.
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\hwr-sync-recent.service") "/tmp/hwr-sync-recent.service"
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\hwr-sync-recent.timer") "/tmp/hwr-sync-recent.timer"
@@ -548,7 +649,7 @@ Invoke-Remote "chmod 0755 /tmp/rm2-install-timer.sh; sh /tmp/rm2-install-timer.s
 Ok "Systemd timer configured (SYNC_INTERVAL_HOURS=$syncIntervalHours)"
 
 if ($SkipJonobones) {
-  Ok "SkipJonobones set â€” done after deploy"
+  Ok "SkipJonobones set - done after deploy"
   exit 0
 }
 
@@ -607,7 +708,7 @@ Info "Starting on-device install job under nohup (survives SSH drop)..."
 # Clear prior status, start detached
 Invoke-Remote "rm -f /tmp/rm2-install.status; : > /tmp/rm2-install.log; if command -v nohup >/dev/null 2>&1; then nohup sh /home/root/hwr/scripts/install-job.sh >/tmp/rm2-install.nohup.out 2>&1 & else sh /home/root/hwr/scripts/install-job.sh >/tmp/rm2-install.log 2>&1 & fi; echo started"
 
-Info "Polling /tmp/rm2-install.status (~60s heartbeat; Ctrl+C here is safe — job keeps running on tablet)..."
+Info "Polling /tmp/rm2-install.status (~60s heartbeat; Ctrl+C here is safe - job keeps running on tablet)..."
 $deadline = (Get-Date).AddHours(6)
 $pollStarted = Get-Date
 $lastHeartbeat = [datetime]::MinValue
@@ -617,13 +718,13 @@ while ((Get-Date) -lt $deadline) {
   try {
     $st = Invoke-RemoteCapture "cat /tmp/rm2-install.status 2>/dev/null || echo phase=pending"
   } catch {
-    Warn "SSH blip while polling — retrying (on-device job still running)"
+    Warn "SSH blip while polling - retrying (on-device job still running)"
     continue
   }
   $phase = Get-RmInstallPhase $st
   if ($phase -eq "ok") { Ok "On-device job finished successfully"; break }
   if ($phase -eq "fail") {
-    Warn "On-device job failed — last log lines:"
+    Warn "On-device job failed - last log lines:"
     Invoke-Remote "tail -n 40 /tmp/rm2-install.log" | Out-Host
     throw "install-job failed"
   }
@@ -633,7 +734,7 @@ while ((Get-Date) -lt $deadline) {
     try {
       Write-RmInstallHeartbeat $elapsed
     } catch {
-      Warn "Heartbeat SSH blip — retrying next cycle (on-device job still running)"
+      Warn "Heartbeat SSH blip - retrying next cycle (on-device job still running)"
     }
   }
 }
