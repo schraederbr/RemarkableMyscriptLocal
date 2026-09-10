@@ -1,23 +1,19 @@
-﻿<#
-.SYNOPSIS
-  One-liner Windows bootstrap: download RemarkableMyscriptLocal release + assets, then run install-rm2-stack.ps1.
-
-.DESCRIPTION
-  Intended for:
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.6/scripts/install-from-web.ps1 | iex"
-
-  Defaults (override via env):
-    RELEASE_TAG / RM2_RELEASE_TAG = v0.3.6
-    HOST                           = 10.11.99.1
-
-  Prerequisites (printed up front):
-    - USB cable (or set HOST to Wi-Fi IP)
-    - reMarkable SSH password
-    - Joplin upload mode (SVG only skips MyScript keys)
-    - MyScript APP_KEY (HMAC optional) only if handwriting text / both
-    - Joplin Cloud email + password
-    - Tablet Wi-Fi with internet (Joplin Cloud; MyScript only if text/HWR)
-#>
+# One-liner Windows bootstrap: download RemarkableMyscriptLocal release + assets, then run install-rm2-stack.ps1.
+#
+# Intended for (download then -File; never irm|iex):
+#   powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.7/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell -NoProfile -ExecutionPolicy Bypass -File $f"
+#
+# Defaults (override via env):
+#   RELEASE_TAG / RM2_RELEASE_TAG = v0.3.7
+#   HOST                           = 10.11.99.1
+#
+# Prerequisites (printed up front):
+# - USB cable (or set HOST to Wi-Fi IP)
+# - reMarkable SSH password
+# - Joplin upload mode (SVG only skips MyScript keys)
+# - MyScript APP_KEY (HMAC optional) only if handwriting text / both
+# - Joplin Cloud email + password
+# - Tablet Wi-Fi with internet (Joplin Cloud; MyScript only if text/HWR)
 $ErrorActionPreference = "Stop"
 
 function Info($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
@@ -26,7 +22,7 @@ function Warn($msg) { Write-Host "!!  $msg" -ForegroundColor Yellow }
 
 $ReleaseTag = $env:RELEASE_TAG
 if (-not $ReleaseTag) { $ReleaseTag = $env:RM2_RELEASE_TAG }
-if (-not $ReleaseTag) { $ReleaseTag = "v0.3.6" }
+if (-not $ReleaseTag) { $ReleaseTag = "v0.3.7" }
 
 $HostName = $env:HOST
 if (-not $HostName) { $HostName = "10.11.99.1" }

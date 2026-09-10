@@ -11,8 +11,8 @@ import (
 )
 
 // ReleaseTag is the GitHub release / raw path tag this launcher installs.
-// Override at build: -ldflags "-X main.ReleaseTag=v0.3.6"
-var ReleaseTag = "v0.3.6"
+// Override at build: -ldflags "-X main.ReleaseTag=v0.3.7"
+var ReleaseTag = "v0.3.7"
 
 const repoRaw = "https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal"
 
@@ -43,15 +43,16 @@ func main() {
 
 func runWindows() error {
 	url := fmt.Sprintf("%s/%s/scripts/install-from-web.ps1", repoRaw, ReleaseTag)
+	// Download to a temp file then powershell -File (never irm|iex: comment bullets / encoding break iex).
 	ps := fmt.Sprintf(
-		"irm %s | iex",
+		"$f=Join-Path $env:TEMP 'install-from-web.ps1'; Invoke-WebRequest -Uri '%s' -OutFile $f -UseBasicParsing; powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f",
 		url,
 	)
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
-	fmt.Println("==> Running Windows install-from-web.ps1 via PowerShell")
+	fmt.Println("==> Downloading install-from-web.ps1 then running via powershell -File")
 	fmt.Println("    ", url)
 	fmt.Println()
 	return cmd.Run()

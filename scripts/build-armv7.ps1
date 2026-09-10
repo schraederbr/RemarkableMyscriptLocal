@@ -1,4 +1,4 @@
-﻿# Build linux/arm GOARM=7 static binary for reMarkable 2 (run on Windows).
+# Build linux/arm GOARM=7 static binary for reMarkable 2 (run on Windows).
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $Root
