@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Build jonobones offline npm tarball for RM2 release assets.
 #>

@@ -1,21 +1,17 @@
-﻿<#
-.SYNOPSIS
-  Host-side installer for rm2hwr + jonobones on reMarkable 2.
-
-.DESCRIPTION
-  Collects ALL credentials up front, deploys binaries/scripts, then runs the
-  long on-device job under nohup so a dropped SSH session does not abort it.
-
-  Required from each person (prompted if missing):
-    - Tablet host (USB 10.11.99.1 or Wi-Fi IP)
-    - reMarkable SSH password (auto-installs your PC SSH key once)
-    - Joplin upload mode (text / SVG / both; default both)
-    - MyScript APP_KEY (HMAC_KEY optional) only if mode is text or both
-    - Periodic sync interval hours (default 6; 0 disables systemd timer)
-    - Joplin notebook for NEW notes (blank=auto most notes; or title / 32-hex id)
-    - Joplin Cloud email + password (or other sync target fields)
-    - Optional E2EE master password
-#>
+# Host-side installer for rm2hwr + jonobones on reMarkable 2.
+#
+# Collects ALL credentials up front, deploys binaries/scripts, then runs the
+# long on-device job under nohup so a dropped SSH session does not abort it.
+#
+# Required from each person (prompted if missing):
+# - Tablet host (USB 10.11.99.1 or Wi-Fi IP)
+# - reMarkable SSH password (auto-installs your PC SSH key once)
+# - Joplin upload mode (text / SVG / both; default both)
+# - MyScript APP_KEY (HMAC_KEY optional) only if mode is text or both
+# - Periodic sync interval hours (default 6; 0 disables systemd timer)
+# - Joplin notebook for NEW notes (blank=auto most notes; or title / 32-hex id)
+# - Joplin Cloud email + password (or other sync target fields)
+# - Optional E2EE master password
 [CmdletBinding()]
 param(
   [string]$HostName = "",
@@ -664,7 +660,7 @@ New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 $dist = Join-Path $distDir "rm2hwr-linux-armv7"
 $releaseTag = $env:RM2_RELEASE_TAG
 if (-not $releaseTag) { $releaseTag = $env:RELEASE_TAG }
-if (-not $releaseTag) { $releaseTag = "v0.3.6" }
+if (-not $releaseTag) { $releaseTag = "v0.3.7" }
 $releaseAssetBase = "https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/$releaseTag"
 
 function Get-ReleaseAssetHttps([string]$Name, [string]$OutFile, [int]$MinSize = 100000) {
