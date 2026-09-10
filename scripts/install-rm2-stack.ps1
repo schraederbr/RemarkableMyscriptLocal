@@ -664,7 +664,7 @@ New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 $dist = Join-Path $distDir "rm2hwr-linux-armv7"
 $releaseTag = $env:RM2_RELEASE_TAG
 if (-not $releaseTag) { $releaseTag = $env:RELEASE_TAG }
-if (-not $releaseTag) { $releaseTag = "v0.3.4" }
+if (-not $releaseTag) { $releaseTag = "v0.3.5" }
 $releaseAssetBase = "https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/$releaseTag"
 
 function Get-ReleaseAssetHttps([string]$Name, [string]$OutFile, [int]$MinSize = 100000) {
@@ -997,6 +997,11 @@ while ((Get-Date) -lt $deadline) {
 if ($phase -ne "ok") { throw "Timed out waiting for install-job" }
 
 Ok "Installer finished"
+Write-Host ""
+Warn "First jonobones <-> Joplin Cloud sync may take a LONG time (large vaults / many attachments: tens of minutes or more)."
+Warn "Keep Wi-Fi on. Do NOT unplug / do NOT assume install failed while jonobones is still syncing."
+Warn "Watch: /tmp/jonobones-start.log and install heartbeat du of the jonobones profile."
+Write-Host ""
 Write-Host "Logs on tablet: /tmp/rm2-install.log  /tmp/jonobones-start.log"
 Write-Host "MyScript env:   /home/root/hwr/conf/hwr.env"
 Write-Host "API token env:  /home/root/hwr/conf/jonobones.env"

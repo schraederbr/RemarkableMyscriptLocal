@@ -508,7 +508,7 @@ fi
 
 # Binary: prefer dist, else HTTPS release
 DIST="$ROOT/dist/rm2hwr-linux-armv7"
-RELEASE_TAG="${RM2_RELEASE_TAG:-${RELEASE_TAG:-v0.3.4}}"
+RELEASE_TAG="${RM2_RELEASE_TAG:-${RELEASE_TAG:-v0.3.5}}"
 RELEASE_BASE="https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/${RELEASE_TAG}"
 if [[ -f "$DIST" && $(wc -c <"$DIST") -gt 100000 ]]; then
   ok "Using existing binary $DIST"
@@ -667,3 +667,7 @@ if [[ "$phase" != "ok" ]]; then
 fi
 echo "Logs on tablet: /tmp/rm2-install.log  /tmp/jonobones-start.log"
 ok "Install finished"
+echo ""
+warn "First jonobones <-> Joplin Cloud sync may take a LONG time (large vaults / many attachments: tens of minutes or more)."
+warn "Keep Wi-Fi on. Do NOT unplug / do NOT assume install failed while jonobones is still syncing."
+warn "Watch: /tmp/jonobones-start.log and install heartbeat du of the jonobones profile."

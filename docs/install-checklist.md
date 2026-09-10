@@ -8,7 +8,7 @@ Gather these **before** running `scripts/install-rm2-stack.ps1`. The installer a
 |------|---------------------|----------|
 | **Tablet Wi-Fi + internet** | Tablet network settings | Joplin Cloud sync; MyScript API only if upload mode includes text (npm only if the offline Release asset is missing) |
 | Tablet reachability for SSH | USB â†’ `10.11.99.1`, or Wiâ€‘Fi IP | `ssh` / `scp` (USB OK for deploy; Wi-Fi still required for the steps above) |
-| reMarkable SSH password | Settings â†’ Help â†’ Copyrights and licenses | One-time PC SSH key install |
+| reMarkable **root SSH password** | See **Finding the SSH password** below | One-time PC SSH key install |
 | Joplin **upload mode** | Installer prompt (or `UPLOAD_MODE` in secrets) | `text` / `svg` / `both` (default **both**). Ask this first. |
 | MyScript account + `APP_KEY` | [Sign up / console](https://developer.myscript.com/) | **Required only** when mode is `text` or `both` (skipped for SVG-only) |
 | MyScript `HMAC_KEY` | Same app (optional) | Blank OK if HMAC disabled; not prompted for SVG-only |
@@ -18,8 +18,15 @@ Gather these **before** running `scripts/install-rm2-stack.ps1`. The installer a
 
 WebDAV / Nextcloud / Joplin Server: use URL + username + password instead (`SYNC_TARGET` in `conf/install.secrets.example`).
 
-## Optional
+## Finding the SSH password
 
+Username is always `root`. The device-specific password is shown on the tablet:
+
+- **RM2 / classic:** Settings → Help → About → **Copyrights and licenses** → look under **GPLv3 compliance**
+- **Paper Pro / developer mode:** enable developer mode and reveal the SSH password per [Developer mode](https://support.remarkable.com/s/article/Developer-mode)
+- Security note: RM2 ships with SSH on by default and a **device-specific** password — [Security in our products and services](https://support.remarkable.com/s/article/Security-in-our-products-and-services)
+- The password **changes after a factory reset**; re-read it from the device if SSH suddenly fails
+## Optional
 | Item | When |
 |------|------|
 | Joplin E2EE master password | Vault uses end-to-end encryption |
@@ -49,6 +56,8 @@ For **Joplin Cloud**, the host installer POSTs to `https://api.joplincloud.com/a
 The long on-device job runs under `nohup`. While `install-rm2-stack.ps1` (or `.sh`) waits, it prints a **heartbeat ~every 60 seconds**: current `phase=...` from `/tmp/rm2-install.status`, elapsed time, `du` of the jonobones profile, free space under `/home`, and a short log tail. Failures surface immediately with the last log lines. Ctrl+C on the host does not stop the tablet job.
 
 ## After install
+
+> **First jonobones ↔ Joplin Cloud sync may take a long time.** Large vaults / many attachments often need **tens of minutes or more**. Keep Wi-Fi on; **do not unplug** and **do not assume the install failed** while jonobones is still syncing. See `/tmp/jonobones-start.log` and the host install heartbeat (`du` of the jonobones profile).
 
 On-device logs: `/tmp/rm2-install.log`, `/tmp/jonobones-start.log`.  
 Upsert uses `http://127.0.0.1:26637` and the token in `/home/root/hwr/conf/jonobones.env` (optional `JONOBONES_PARENT_ID` / `JONOBONES_PARENT_TITLE` for NEW notes; unset = auto most-notes).  

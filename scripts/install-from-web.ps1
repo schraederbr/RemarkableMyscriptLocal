@@ -4,10 +4,10 @@
 
 .DESCRIPTION
   Intended for:
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.4/scripts/install-from-web.ps1 | iex"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.5/scripts/install-from-web.ps1 | iex"
 
   Defaults (override via env):
-    RELEASE_TAG / RM2_RELEASE_TAG = v0.3.4
+    RELEASE_TAG / RM2_RELEASE_TAG = v0.3.5
     HOST                           = 10.11.99.1
 
   Prerequisites (printed up front):
@@ -26,7 +26,7 @@ function Warn($msg) { Write-Host "!!  $msg" -ForegroundColor Yellow }
 
 $ReleaseTag = $env:RELEASE_TAG
 if (-not $ReleaseTag) { $ReleaseTag = $env:RM2_RELEASE_TAG }
-if (-not $ReleaseTag) { $ReleaseTag = "v0.3.4" }
+if (-not $ReleaseTag) { $ReleaseTag = "v0.3.5" }
 
 $HostName = $env:HOST
 if (-not $HostName) { $HostName = "10.11.99.1" }
