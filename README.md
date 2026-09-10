@@ -16,15 +16,35 @@ Offline bundle docs: [docs/offline-npm-bundle.md](docs/offline-npm-bundle.md).
 
 ## Quick install
 
-**One-liner** (Windows PC, USB `10.11.99.1` by default — no local clone or Go required):
+### Download and double-click (no paste required)
+
+From the [**v0.3.3** release](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/tag/v0.3.3):
+
+| OS | Asset | How |
+|----|-------|-----|
+| **Windows** | [`install-rm2-windows.exe`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.3/install-rm2-windows.exe) | Double-click (console stays open for prompts). Fallback: [`install-rm2-windows.cmd`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.3/install-rm2-windows.cmd) |
+| **Linux** | [`install-rm2-linux`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.3/install-rm2-linux) | `chmod +x install-rm2-linux && ./install-rm2-linux` (or double-click from a file manager that runs executables in a terminal) |
+| **macOS** | [`install-rm2-macos.command`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.3/install-rm2-macos.command) | Double-click (opens Terminal). First time: right-click → Open if Gatekeeper blocks |
+
+SmartScreen / Gatekeeper may warn on first run — that is normal for unsigned downloadable installers.
+
+### One-liners (same release)
+
+**Windows** (USB `10.11.99.1` by default — no local clone or Go required):
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.2/scripts/install-from-web.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.3/scripts/install-from-web.ps1 | iex"
 ```
 
-Downloads the **`v0.3.2`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `node_sqlite3.node`, jonobones offline npm tarball), then runs `install-rm2-stack.ps1 -SkipBuild`.
+**Linux / macOS** (bash + curl + OpenSSH):
 
-**v0.3.2** includes: installer asks upload mode first and prompts for MyScript keys only when handwriting text is selected (#13); Joplin sync-before-title-match; SVG stroke widths from pen points (rmc-aligned fallback); plain `Remarkable:` / `Page N` HWR headers.
+```
+curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.3/scripts/install-from-web.sh | bash
+```
+
+Downloads the **`v0.3.3`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
+
+**v0.3.3** includes: SSH-fail recovery (retry USB / enter Wi-Fi IP); early Joplin Cloud password verify against `api.joplincloud.com`; Linux/macOS `install-from-web.sh` + double-click launchers; plus v0.3.2 behaviors (upload mode first / MyScript keys only for text; Joplin sync-before-title-match; SVG stroke widths; plain HWR headers).
 
 From a local clone (optional):
 
@@ -33,19 +53,24 @@ cd RemarkableMyscriptLocal
 powershell -NoProfile -File .\scripts\install-rm2-stack.ps1
 ```
 
+```bash
+cd RemarkableMyscriptLocal
+./scripts/install-rm2-stack.sh
+```
+
 Have ready (see [docs/install-checklist.md](docs/install-checklist.md)):
 
-- **USB cable** (or set `HOST` to the tablet Wi-Fi IP)
+- **USB cable** (or set `HOST` to the tablet Wi-Fi IP). If SSH to `10.11.99.1` fails, the installer prompts to enable USB networking **or** enter a Wi-Fi IP and retry.
 - reMarkable SSH password (installer installs your PC SSH key once — no manual key setup)
 - Joplin upload mode: SVG only / handwriting text / both (installer default: both)
 - MyScript `APP_KEY` (optional `HMAC_KEY`) from [developer.myscript.com](https://developer.myscript.com/) — **only if** mode is text or both (SVG-only skips these prompts)
-- Joplin Cloud email + password (or another sync target)
+- Joplin Cloud email + password (or another sync target) — **verified up front** for Joplin Cloud before the long on-device install
 - Periodic sync interval hours (installer default: **6**; `0` disables systemd timer)
 - Joplin notebook for **NEW** notes: blank = auto (notebook with most notes); or exact title / 32-hex id
 - Optional E2EE master password
 - **Tablet on Wi-Fi with internet**
 
-The installer collects credentials up front, deploys `rm2hwr` + Node/jonobones/sqlite, runs the long steps under `nohup` (survives dropped SSH), and scripted `jonobones init` + start.
+The installer collects credentials up front, verifies Joplin Cloud login early, deploys `rm2hwr` + Node/jonobones/sqlite, runs the long steps under `nohup` (survives dropped SSH), and scripted `jonobones init` + start.
 
 ## Day-to-day: HWR → Joplin
 

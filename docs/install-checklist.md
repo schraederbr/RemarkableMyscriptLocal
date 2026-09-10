@@ -1,6 +1,6 @@
 # Install checklist â€” what each person needs
 
-Gather these **before** running `scripts/install-rm2-stack.ps1`. The installer asks for credentials up front, installs your PC SSH key from the tablet password (no manual key setup), then runs the long tablet work under `nohup`.
+Gather these **before** running `scripts/install-rm2-stack.ps1`. The installer asks for credentials up front (upload mode first; MyScript keys only for text/both), verifies Joplin Cloud login early, installs your PC SSH key from the tablet password (no manual key setup), recovers from SSH failures (USB retry or Wi-Fi IP), then runs the long tablet work under `nohup`.
 
 ## Required
 
@@ -31,6 +31,19 @@ WebDAV / Nextcloud / Joplin Server: use URL + username + password instead (`SYNC
 - Bundled `third_party/revcord/node_sqlite3.node`
 - Node 20 armv7l tarball fetched on the PC and copied over
 
+
+## SSH connection recovery
+
+If the installer cannot SSH to the tablet (default USB `10.11.99.1`):
+
+1. **Retry USB** — plug in the tablet, unlock it, enable USB networking / Ethernet over USB, then retry; **or**
+2. **Enter Wi-Fi IP** — type the tablet's Wi-Fi IP and the installer retries with that `HOST`.
+
+Non-interactive runs fail immediately with a clear message (set `-HostName` / `HOST` correctly; do not hang).
+
+## Joplin credentials verified early
+
+For **Joplin Cloud**, the host installer POSTs to `https://api.joplincloud.com/api/sessions` right after you enter email/password (before the long on-device job). Bad passwords re-prompt (or fail fast when `NonInteractive`). Joplin Server uses the same `/api/sessions` check against your sync URL. WebDAV/Nextcloud get a best-effort PROPFIND only.
 ## Progress while installing
 
 The long on-device job runs under `nohup`. While `install-rm2-stack.ps1` (or `.sh`) waits, it prints a **heartbeat ~every 60 seconds**: current `phase=...` from `/tmp/rm2-install.status`, elapsed time, `du` of the jonobones profile, free space under `/home`, and a short log tail. Failures surface immediately with the last log lines. Ctrl+C on the host does not stop the tablet job.
