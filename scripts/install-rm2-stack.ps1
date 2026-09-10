@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Host-side installer for rm2hwr + jonobones on reMarkable 2.
 
@@ -135,7 +135,7 @@ if (-not $sshPassword) {
 
 $lang = if ($sec["LANG"]) { $sec["LANG"] } else { "en_US" }
 
-# Upload mode first — MyScript keys only needed for handwriting text (text|both)
+# Upload mode first - MyScript keys only needed for handwriting text (text|both)
 $uploadMode = if ($sec["UPLOAD_MODE"]) { $sec["UPLOAD_MODE"].Trim().ToLowerInvariant() } else { "" }
 if ($uploadMode -notin @("text","svg","both")) {
   if ($NonInteractive) {
@@ -143,8 +143,8 @@ if ($uploadMode -notin @("text","svg","both")) {
   } else {
     Write-Host ""
     Write-Host "What should rm2hwr upload to Joplin?"
-    Write-Host "  1) Handwriting text only (MyScript HWR — needs APP_KEY)"
-    Write-Host "  2) SVG only (page images — no MyScript keys)"
+    Write-Host "  1) Handwriting text only (MyScript HWR - needs APP_KEY)"
+    Write-Host "  2) SVG only (page images - no MyScript keys)"
     Write-Host "  3) Both text and SVG  [default]"
     $umChoice = Ask "Choice" "3"
     switch ($umChoice) {
@@ -163,7 +163,7 @@ if ($uploadMode -eq "svg") {
   # SVG-only: skip MyScript prompts; leave keys empty (or keep secrets if already set)
   if (-not $appKey) { $appKey = "" }
   if (-not $hmacKey) { $hmacKey = "" }
-  Ok "UPLOAD_MODE=svg — skipping MyScript APP_KEY/HMAC_KEY prompts"
+  Ok "UPLOAD_MODE=svg - skipping MyScript APP_KEY/HMAC_KEY prompts"
 } else {
   if (-not $appKey) {
     if ($NonInteractive) {
@@ -664,7 +664,7 @@ New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 $dist = Join-Path $distDir "rm2hwr-linux-armv7"
 $releaseTag = $env:RM2_RELEASE_TAG
 if (-not $releaseTag) { $releaseTag = $env:RELEASE_TAG }
-if (-not $releaseTag) { $releaseTag = "v0.3.5" }
+if (-not $releaseTag) { $releaseTag = "v0.3.6" }
 $releaseAssetBase = "https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/$releaseTag"
 
 function Get-ReleaseAssetHttps([string]$Name, [string]$OutFile, [int]$MinSize = 100000) {

@@ -6,13 +6,13 @@ Turn reMarkable 2 notebooks into **Joplin notes that sync with Joplin Cloud** (o
 
 ### Download and double-click (no paste required)
 
-From the [**v0.3.5** release](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/tag/v0.3.5):
+From the [**v0.3.6** release](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/tag/v0.3.6):
 
 | OS | Asset | How |
 |----|-------|-----|
-| **Windows** | [`install-rm2-windows.exe`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.5/install-rm2-windows.exe) | Double-click (console stays open for prompts). Fallback: [`install-rm2-windows.cmd`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.5/install-rm2-windows.cmd) |
-| **Linux** | [`install-rm2-linux`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.5/install-rm2-linux) | `chmod +x install-rm2-linux && ./install-rm2-linux` (or double-click from a file manager that runs executables in a terminal) |
-| **macOS** | [`install-rm2-macos.command`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.5/install-rm2-macos.command) | Double-click (opens Terminal). First time: right-click → Open if Gatekeeper blocks |
+| **Windows** | [`install-rm2-windows.exe`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.6/install-rm2-windows.exe) | Double-click (console stays open for prompts). Fallback: [`install-rm2-windows.cmd`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.6/install-rm2-windows.cmd) |
+| **Linux** | [`install-rm2-linux`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.6/install-rm2-linux) | `chmod +x install-rm2-linux && ./install-rm2-linux` (or double-click from a file manager that runs executables in a terminal) |
+| **macOS** | [`install-rm2-macos.command`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.6/install-rm2-macos.command) | Double-click (opens Terminal). First time: right-click → Open if Gatekeeper blocks |
 
 SmartScreen / Gatekeeper may warn on first run — that is normal for unsigned downloadable installers.
 
@@ -21,18 +21,18 @@ SmartScreen / Gatekeeper may warn on first run — that is normal for unsigned d
 **Windows** (USB `10.11.99.1` by default — no local clone or Go required):
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.5/scripts/install-from-web.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.6/scripts/install-from-web.ps1 | iex"
 ```
 
 **Linux / macOS** (bash + curl + OpenSSH):
 
 ```
-curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.5/scripts/install-from-web.sh | bash
+curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.6/scripts/install-from-web.sh | bash
 ```
 
-Downloads the **`v0.3.5`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
+Downloads the **`v0.3.6`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
 
-**v0.3.5** includes: clear warning that the **first jonobones ↔ Joplin Cloud sync can take a long time** (large vaults / many attachments — tens of minutes or more); **where to find the root/SSH password** (RM2 Copyrights/GPLv3, Paper Pro [Developer mode](https://support.remarkable.com/s/article/Developer-mode), [security note](https://support.remarkable.com/s/article/Security-in-our-products-and-services), changes after factory reset); plus v0.3.4 quick-install-first README and **no duplicate H1** note body (#16); plus v0.3.3 installer UX and earlier behaviors.
+**v0.3.6** includes: **Windows installer fix** - PowerShell 5.x parse errors from UTF-8 em-dashes in `install-rm2-stack.ps1` (classic mojibake for em-dash breaking `Write-Host` / `Ask` string quotes on Windows). Installer `.ps1` files now use ASCII-only user-facing strings and UTF-8 with BOM. **Use v0.3.6+ for the Windows installer**; v0.3.5 and earlier can fail immediately at parse time. Also carries forward v0.3.5 jonobones first-sync warning + SSH password find-it; v0.3.4 quick-install-first README and **no duplicate H1** (#16); v0.3.3 installer UX.
 
 From a local clone (optional):
 
