@@ -27,6 +27,23 @@ Set in `hwr.env` at install time, override per run with `rm2hwr --upload-mode te
 
 SVGs are ink-bbox + ~40px padding at 1:1 pixel size (no downscale). White background, black polylines with round caps. **No** grey dashed page frame. Empty ink pages produce no `.svg` file.
 
+Stroke-width (`internal/svg`): prefer **mean of per-point Width** values (page space); fallback when missing is stroke-level thickness_scale with **fineliner × 1.8** (rmc-aligned).
+
+## Markdown shape (`NOTE.md` / `fullText`)
+
+HWR handoff uses **plain text lines**, not `##` headings:
+
+```
+Remarkable:
+Page 1
+
+![Page 1](<pageUuid>.svg)
+
+recognized text
+```
+
+Legacy `## Page N` bodies are still recognized when merging SVG embeds.
+
 ## Title matching
 
 `title` is the reMarkable `visibleName` from xochitl `.metadata` (e.g. `9-8-26`).
@@ -43,7 +60,7 @@ Joplin upsert uses **exact** title match: **replace** the marked HWR block if a 
   "pages": [
     {"index": 0, "pageUuid": "...", "status": "OK|EMPTY|SKIP|...", "text": "...", "svgPath": "<pageUuid>.svg"}
   ],
-  "fullText": "# title\n\n## Page 1\n\n![Page 1](<pageUuid>.svg)\n\nrecognized text\n"
+  "fullText": "Remarkable:\nPage 1\n\n![Page 1](<pageUuid>.svg)\n\nrecognized text\n"
 }
 ```
 
@@ -82,7 +99,7 @@ node /home/root/hwr/scripts/joplin-upsert.js /home/root/hwr/out/<doc-uuid>
 rm2hwr --name "9-8" --joplin-upsert
 ```
 
-Optional env: `JONOBONES_URL`, `JONOBONES_TOKEN`, `JONOBONES_PARENT_ID`, `JONOBONES_PARENT_TITLE`, `JONOBONES_PROFILE`, `UPLOAD_MODE`, `JONOBONES_SYNC_TIMEOUT_MS`, `JONOBONES_SYNC_POLL_MS`, `JONOBONES_SYNC_IDLE_GRACE_MS`.
+Optional env: `JONOBONES_URL`, `JONOBONES_TOKEN`, `JONOBONES_PARENT_ID`, `JONOBONES_PARENT_TITLE`, `JONOBONES_PROFILE`, `UPLOAD_MODE`, `JONOBONES_SYNC_TIMEOUT_MS` (default 180000), `JONOBONES_SYNC_POLL_MS` (500), `JONOBONES_SYNC_IDLE_GRACE_MS` (2000).
 
 ### Target notebook for NEW notes
 
@@ -118,9 +135,10 @@ On-device **systemd timer** (default every **6** hours) runs /home/root/hwr/scri
 
 1. Finds DocumentType notebooks with lastModified in the last 30 days
 2. SHA-256 + mtime each .rm page; skips if /home/root/hwr/state/<doc-uuid>.json matches
-3. Else 
-m2hwr --uuid … --joplin-upsert (UPLOAD_MODE from hwr.env, default **both**)
+3. Else `rm2hwr --uuid … --joplin-upsert` (`UPLOAD_MODE` from `hwr.env`, default **both**)
 4. Writes state sidecar **only on success** (lastUploadedAt, optional joplinNoteId, per-page hashes)
+
+**Optional Oxide launcher:** Sync Joplin tile (`syncjoplin.oxide` → `sync-now.sh` → `systemctl start hwr-sync-recent.service`). Oxide is not required for core install.
 
 Change interval: SYNC_INTERVAL_HOURS in hwr.env + re-run installer (rewrites OnUnitActiveSec), or systemctl edit hwr-sync-recent.timer.  
 Disable: set SYNC_INTERVAL_HOURS=0 and re-run installer, or systemctl disable --now hwr-sync-recent.timer.  

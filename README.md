@@ -6,7 +6,7 @@ Pipeline:
 
 1. **`rm2hwr`** (Go, on-device) reads xochitl `.rm` pages → MyScript HWR and/or content-fit SVGs → `NOTE.md` + `HANDOFF.json`
 2. **`jonobones`** (on-device Joplin-compatible sync daemon) keeps a local Joplin vault and **syncs directly with your Joplin account**
-3. **`joplin-upsert`** (or `rm2hwr --joplin-upsert`) creates/updates the note by **exact notebook title** (`visibleName`), **replacing** the marked HWR section (not forever-append), then jonobones syncs it upstream
+3. **`joplin-upsert`** (or `rm2hwr --joplin-upsert`) **syncs FROM Joplin Cloud first** (`POST /sync` + wait idle) so title match sees Cloud notes, then creates/updates by **exact notebook title** (`visibleName`), **replacing** the marked HWR section (not forever-append), then syncs again to push
 
 You do **not** need desktop Joplin open for the sync path. The tablet talks to Joplin Cloud (or your sync target) through jonobones.
 
@@ -19,10 +19,10 @@ Offline bundle docs: [docs/offline-npm-bundle.md](docs/offline-npm-bundle.md).
 **One-liner** (Windows PC, USB `10.11.99.1` by default — no local clone or Go required):
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.0/scripts/install-from-web.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.1/scripts/install-from-web.ps1 | iex"
 ```
 
-Downloads the `v0.3.0` source + release assets over HTTPS, then runs `install-rm2-stack.ps1 -SkipBuild`.
+Downloads the **`v0.3.1`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `node_sqlite3.node`, jonobones offline npm tarball), then runs `install-rm2-stack.ps1 -SkipBuild`.
 
 From a local clone (optional):
 
@@ -47,6 +47,8 @@ The installer collects credentials up front, deploys `rm2hwr` + Node/jonobones/s
 
 ## Day-to-day: HWR → Joplin
 
+**Supported UI path (optional):** if you use [Oxide](https://oxide.eeems.website/) on the tablet, tap the **Sync Joplin** tile (`syncjoplin.oxide` → `sync-now.sh` → `systemctl start hwr-sync-recent.service`). Oxide is only a launcher — not required for core install; CLI and the systemd timer work without it.
+
 ```bash
 export PATH=/home/root/.npm-global/bin:/home/root/opt/node/bin:$PATH
 
@@ -61,7 +63,11 @@ node /home/root/hwr/scripts/joplin-upsert.js /home/root/hwr/out/<doc-uuid>
 jonobones sync
 ```
 
+**Pull before match:** `joplin-upsert` always `POST /sync` and waits for idle **before** searching notes by title, so a note that already exists in Joplin Cloud is updated instead of duplicated when the tablet vault was stale; after create/update it syncs again to push. Timeouts: `JONOBONES_SYNC_TIMEOUT_MS` (default 180000), `JONOBONES_SYNC_POLL_MS` (500), `JONOBONES_SYNC_IDLE_GRACE_MS` (2000).
+
 Matching rule: **exact title** = reMarkable `visibleName`. Existing Joplin note → **replace** `<!-- rm2hwr:begin -->`…`<!-- rm2hwr:end -->` block (preserves content outside); missing → create with markers under `JONOBONES_PARENT_ID` / `JONOBONES_PARENT_TITLE`, or (if unset) the notebook with the **most notes**.
+
+HWR markdown uses plain text lines `Remarkable:` and `Page N` (not `##` headings), plus optional `![Page N](….svg)` image embeds.
 
 Manual one-shot is above. **Automatic:** systemd timer `hwr-sync-recent.timer` runs `sync-recent.sh` every `SYNC_INTERVAL_HOURS` (default 6; RM2 has no crond): last-30-day notebooks, skip unchanged pages via state sidecars, else `rm2hwr --joplin-upsert`.
 
@@ -74,7 +80,7 @@ Handoff / replace markers / systemd timer: [docs/joplin-sync.md](docs/joplin-syn
 | `rm2hwr` | Parse `.rm` (v5 + v6 auto-detect), call MyScript, write `out/<uuid>/` |
 | Node 20 + jonobones | Local Joplin vault + **direct sync** to Joplin Cloud/Server/WebDAV |
 | Revcord `node_sqlite3.node` | ARMv7 sqlite binding (vendored in `third_party/revcord/`) |
-| `joplin-upsert.js` | Title-match upsert into jonobones API (`127.0.0.1:26637`) |
+| `joplin-upsert.js` | Sync-pull → title-match upsert → sync-push (`127.0.0.1:26637`) |
 
 ### Device layout
 
@@ -156,9 +162,10 @@ v6 coordinates are converted from page-centre X / top Y into the same top-left p
 | `internal/rm` | `.rm` auto-dispatch (v5 / v6 by header) |
 | `internal/rmv5` | v5 `.rm` parser |
 | `internal/rmv6` | v6 `.rm` SceneLineItem → strokes |
+| `internal/svg` | content-fit page SVG; stroke-width = mean per-point width / rmc-aligned fineliner fallback |
 | `internal/myscript` | batch JSON, HMAC-SHA512, HTTP |
 | `internal/notebook` | xochitl discovery |
-| `internal/handoff` | `NOTE.md` + `HANDOFF.json` |
+| `internal/handoff` | `NOTE.md` + `HANDOFF.json` (plain `Remarkable:` / `Page N` lines) |
 | `cmd/rm2hwr` | CLI |
 
 ## License
