@@ -19,10 +19,12 @@ Offline bundle docs: [docs/offline-npm-bundle.md](docs/offline-npm-bundle.md).
 **One-liner** (Windows PC, USB `10.11.99.1` by default — no local clone or Go required):
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.1/scripts/install-from-web.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.2/scripts/install-from-web.ps1 | iex"
 ```
 
-Downloads the **`v0.3.1`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `node_sqlite3.node`, jonobones offline npm tarball), then runs `install-rm2-stack.ps1 -SkipBuild`.
+Downloads the **`v0.3.2`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `node_sqlite3.node`, jonobones offline npm tarball), then runs `install-rm2-stack.ps1 -SkipBuild`.
+
+**v0.3.2** includes: installer asks upload mode first and prompts for MyScript keys only when handwriting text is selected (#13); Joplin sync-before-title-match; SVG stroke widths from pen points (rmc-aligned fallback); plain `Remarkable:` / `Page N` HWR headers.
 
 From a local clone (optional):
 
