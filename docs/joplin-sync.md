@@ -56,7 +56,9 @@ When mode is `svg` or `both`, `joplin-upsert.js`:
 1. Reads each page `svgPath` under the doc out dir
 2. `POST {JONOBONES_URL}/resources` multipart (`data` = file, `props` = `{"title":"Page N — <title>.svg"}`)
 3. Rewrites `![Page N](file.svg)` → `![Page N](:/RESOURCE_ID)` in the note body
-4. Creates the note (or replaces the `<!-- rm2hwr:begin -->`…`<!-- rm2hwr:end -->` block) then triggers sync
+4. `POST /sync` + wait for idle (**pull**) so title match sees Cloud notes
+5. Creates the note (or replaces the `<!-- rm2hwr:begin -->`…`<!-- rm2hwr:end -->` block)
+6. `POST /sync` + wait again (**push**)
 
 Missing SVG files log a warning and are skipped. Mode `text` skips resource upload entirely.
 
@@ -64,7 +66,11 @@ Auth uses `Authorization: Bearer` (same as notes). Endpoint is under the same `/
 
 ## Upsert on device
 
-jonobones holds a local Joplin vault on the tablet and **syncs directly** with Joplin Cloud (or your sync target). Upsert writes into that local vault; the next sync cycle pushes upstream.
+jonobones holds a local Joplin vault on the tablet and **syncs directly** with Joplin Cloud (or your sync target).
+
+**Pull before match:** `joplin-upsert.js` always `POST /sync` and waits for `GET /status` → `sync.state=idle` **before** searching notes by title, so a note that already exists in Joplin Cloud is found and updated instead of creating a duplicate. After create/update it syncs again to push.
+
+Upsert writes into that local vault; the post-upsert sync pushes upstream.
 
 Requires jonobones daemon listening on `127.0.0.1:26637` and an API token from init:
 
@@ -76,7 +82,7 @@ node /home/root/hwr/scripts/joplin-upsert.js /home/root/hwr/out/<doc-uuid>
 rm2hwr --name "9-8" --joplin-upsert
 ```
 
-Optional env: `JONOBONES_URL`, `JONOBONES_TOKEN`, `JONOBONES_PARENT_ID`, `JONOBONES_PARENT_TITLE`, `JONOBONES_PROFILE`, `UPLOAD_MODE`.
+Optional env: `JONOBONES_URL`, `JONOBONES_TOKEN`, `JONOBONES_PARENT_ID`, `JONOBONES_PARENT_TITLE`, `JONOBONES_PROFILE`, `UPLOAD_MODE`, `JONOBONES_SYNC_TIMEOUT_MS`, `JONOBONES_SYNC_POLL_MS`, `JONOBONES_SYNC_IDLE_GRACE_MS`.
 
 ### Target notebook for NEW notes
 

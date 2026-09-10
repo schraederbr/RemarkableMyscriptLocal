@@ -3,6 +3,8 @@
 // Optionally uploads page SVGs as Joplin resources and rewrites ![Page N](file.svg) → :/id.
 // Updates REPLACE the marked HWR block (<!-- rm2hwr:begin --> … <!-- rm2hwr:end -->)
 // instead of appending forever; user content outside the markers is preserved.
+// Always POST /sync + wait for idle (GET /status) BEFORE title match so the local
+// vault has latest Cloud notes; triggers sync again after create/update to push.
 // Usage:
 //   node joplin-upsert.js /home/root/hwr/out/<doc-uuid>
 //   node joplin-upsert.js --handoff /path/HANDOFF.json
@@ -16,6 +18,8 @@
 //      tie-break: keep first max). Logs: using notebook <id> <title> (N notes)
 //   Also loads /home/root/hwr/conf/jonobones.env if present (does not override existing env).
 //   UPLOAD_MODE text|svg|both (fallback when payload.uploadMode missing; default text)
+//   JONOBONES_SYNC_TIMEOUT_MS (default 180000) / JONOBONES_SYNC_POLL_MS (default 500)
+//   JONOBONES_SYNC_IDLE_GRACE_MS (default 2000) — wait before accepting idle if syncing not seen
 
 const fs = require('fs');
 const path = require('path');
@@ -389,6 +393,85 @@ function mergeHwrIntoBody(existingBody, hwrBody, docUuid) {
   return trimmed + '\n\n' + marked + '\n';
 }
 
+
+/**
+ * Trigger jonobones sync and wait until settled.
+ * POST /sync -> 202 {syncing, alreadyRunning}; poll GET /status until
+ * sync.state is idle|error|unconfigured (or timeout).
+ * @returns {object|null} last /status payload, or null on hard failure
+ */
+async function syncAndWait(base, token, label) {
+  const tag = label || 'sync';
+  const timeoutMs = parseInt(process.env.JONOBONES_SYNC_TIMEOUT_MS || '180000', 10) || 180000;
+  const pollMs = parseInt(process.env.JONOBONES_SYNC_POLL_MS || '500', 10) || 500;
+  // Avoid accepting a pre-trigger idle snapshot before the background sync flips to syncing.
+  const idleGraceMs = parseInt(process.env.JONOBONES_SYNC_IDLE_GRACE_MS || '2000', 10) || 2000;
+
+  let beforeCompleted = null;
+  try {
+    const before = await api(base, token, 'GET', '/status');
+    beforeCompleted = before && before.sync ? before.sync.lastCompletedAt : null;
+  } catch (_) {
+    // proceed; POST /sync will fail loudly if the daemon is down
+  }
+
+  try {
+    const res = await api(base, token, 'POST', '/sync', {});
+    const already = res && res.alreadyRunning ? ' (already running)' : '';
+    console.log(tag + ' triggered' + already);
+  } catch (e) {
+    console.error(tag + ' trigger failed:', e.message || e);
+  }
+
+  const start = Date.now();
+  let lastStatus = null;
+  let sawSyncing = false;
+  for (;;) {
+    try {
+      lastStatus = await api(base, token, 'GET', '/status');
+    } catch (e) {
+      console.error(tag + ' status poll failed:', e.message || e);
+      return null;
+    }
+    const sync = (lastStatus && lastStatus.sync) || {};
+    const state = sync.state || '';
+    if (state === 'syncing') sawSyncing = true;
+
+    if (state === 'error' || state === 'unconfigured') {
+      const result = sync.lastResult != null ? String(sync.lastResult) : '';
+      console.log(tag + ' settled state=' + state + (result ? ' lastResult=' + result : ''));
+      console.error('joplin-upsert: warn: ' + tag + ' state=' + state + '; proceeding with local vault');
+      return lastStatus;
+    }
+
+    if (state === 'idle') {
+      const completed = sync.lastCompletedAt;
+      const completedAdvanced =
+        beforeCompleted != null && completed != null && String(completed) !== String(beforeCompleted);
+      const elapsed = Date.now() - start;
+      // Require evidence the sync ran: saw syncing, lastCompletedAt advanced, or idle grace elapsed.
+      if (sawSyncing || completedAdvanced || elapsed >= idleGraceMs) {
+        const result = sync.lastResult != null ? String(sync.lastResult) : '';
+        console.log(
+          tag + ' settled state=idle' +
+          (result ? ' lastResult=' + result : '') +
+          (sawSyncing ? '' : completedAdvanced ? ' (completedAt advanced)' : ' (idle grace)')
+        );
+        return lastStatus;
+      }
+    }
+
+    if (Date.now() - start > timeoutMs) {
+      console.error(
+        'joplin-upsert: warn: ' + tag + ' wait timed out after ' + timeoutMs +
+        'ms (state=' + state + '); proceeding with local vault'
+      );
+      return lastStatus;
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+}
+
 async function main() {
   maybeLoadJonobonesEnv();
   const base = (process.env.JONOBONES_URL || 'http://127.0.0.1:26637/v1').replace(/\/$/, '');
@@ -396,6 +479,10 @@ async function main() {
   const { payload, dir } = loadPayload(process.argv);
   const mode = normalizeMode(payload.uploadMode || process.env.UPLOAD_MODE || 'text');
   if (!payload.title) die('handoff missing title');
+
+  // Pull latest notes from sync target BEFORE title match (fixes create-instead-of-update
+  // when Cloud already has the note but the tablet vault is stale).
+  await syncAndWait(base, token, 'sync-pull');
 
   const noteBody = await buildBodyWithResources(base, token, payload, dir, mode);
   if (!noteBody || !String(noteBody).trim()) die('handoff missing body (fullText / pages)');
@@ -439,12 +526,8 @@ async function main() {
     console.log('NOTE_ID=' + noteId);
   }
 
-  try {
-    await api(base, token, 'POST', '/sync', {});
-    console.log('sync triggered');
-  } catch (e) {
-    console.error('sync trigger failed:', e.message);
-  }
+  // Push local create/update upstream (wait so callers see sync progress in logs).
+  await syncAndWait(base, token, 'sync-push');
 }
 
 main().catch((e) => die(e.message || String(e)));
