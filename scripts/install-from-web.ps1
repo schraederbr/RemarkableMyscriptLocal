@@ -4,10 +4,10 @@
 
 .DESCRIPTION
   Intended for:
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.2/scripts/install-from-web.ps1 | iex"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.3/scripts/install-from-web.ps1 | iex"
 
   Defaults (override via env):
-    RELEASE_TAG / RM2_RELEASE_TAG = v0.3.2
+    RELEASE_TAG / RM2_RELEASE_TAG = v0.3.3
     HOST                           = 10.11.99.1
 
   Prerequisites (printed up front):
@@ -26,7 +26,7 @@ function Warn($msg) { Write-Host "!!  $msg" -ForegroundColor Yellow }
 
 $ReleaseTag = $env:RELEASE_TAG
 if (-not $ReleaseTag) { $ReleaseTag = $env:RM2_RELEASE_TAG }
-if (-not $ReleaseTag) { $ReleaseTag = "v0.3.2" }
+if (-not $ReleaseTag) { $ReleaseTag = "v0.3.3" }
 
 $HostName = $env:HOST
 if (-not $HostName) { $HostName = "10.11.99.1" }
@@ -51,12 +51,14 @@ Write-Host "  1) USB cable to the reMarkable 2 (default host $HostName)"
 Write-Host "     Or set env HOST=<tablet-wifi-ip> before running."
 Write-Host "  2) reMarkable SSH password (Settings -> Help -> Copyrights and licenses)"
 Write-Host "  3) Joplin upload mode choice: SVG only / handwriting text / both"
-Write-Host "  4) MyScript APP_KEY (HMAC optional) — only if you want handwriting text (text or both)"
+Write-Host "  4) MyScript APP_KEY (HMAC optional) - only if you want handwriting text (text or both)"
 Write-Host "  5) Joplin Cloud email + password"
 Write-Host "  6) Tablet Wi-Fi ON with internet (Joplin Cloud; MyScript only if text/HWR)"
 Write-Host ""
 Write-Host "This script downloads release source + assets over HTTPS (no gh CLI required),"
 Write-Host "then runs install-rm2-stack.ps1 -SkipBuild so Go is not required."
+Write-Host "If SSH fails, the stack installer prompts to enable USB or enter a Wi-Fi IP."
+Write-Host "Joplin Cloud email/password are verified against api.joplincloud.com before the long install."
 Write-Host ""
 
 $destRoot = Join-Path $env:USERPROFILE "RemarkableMyscriptLocal-$ReleaseTag"

@@ -237,6 +237,135 @@ if ($syncTarget -eq "joplinCloud") {
   throw "Automated init does not support SYNC_TARGET=$syncTarget yet. Use joplinCloud/webdav/nextcloud/joplinServer."
 }
 
+function Test-JoplinCloudLogin([string]$email, [string]$password) {
+  $uri = "https://api.joplincloud.com/api/sessions"
+  $payload = @{ email = $email; password = $password } | ConvertTo-Json -Compress
+  try {
+    $prev = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
+    try {
+      $r = Invoke-WebRequest -Uri $uri -Method POST -Body $payload -ContentType "application/json; charset=utf-8" -UseBasicParsing -TimeoutSec 30
+    } finally { $ProgressPreference = $prev }
+    if ($r.StatusCode -lt 200 -or $r.StatusCode -ge 300) { return @{ Ok = $false; Status = [int]$r.StatusCode; Error = "HTTP $($r.StatusCode)" } }
+    $j = $r.Content | ConvertFrom-Json
+    if (-not $j.id) { return @{ Ok = $false; Status = [int]$r.StatusCode; Error = "no session id in response" } }
+    return @{ Ok = $true; Status = [int]$r.StatusCode; Error = "" }
+  } catch {
+    $resp = $_.Exception.Response
+    if ($resp) {
+      return @{ Ok = $false; Status = [int]$resp.StatusCode; Error = "HTTP $([int]$resp.StatusCode)" }
+    }
+    return @{ Ok = $false; Status = 0; Error = $_.Exception.Message }
+  }
+}
+
+function Test-JoplinServerLogin([string]$baseUrl, [string]$email, [string]$password) {
+  $base = $baseUrl.TrimEnd("/")
+  $uri = "$base/api/sessions"
+  $payload = @{ email = $email; password = $password } | ConvertTo-Json -Compress
+  try {
+    $prev = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
+    try {
+      $r = Invoke-WebRequest -Uri $uri -Method POST -Body $payload -ContentType "application/json; charset=utf-8" -UseBasicParsing -TimeoutSec 30
+    } finally { $ProgressPreference = $prev }
+    if ($r.StatusCode -lt 200 -or $r.StatusCode -ge 300) { return @{ Ok = $false; Status = [int]$r.StatusCode; Error = "HTTP $($r.StatusCode)" } }
+    $j = $r.Content | ConvertFrom-Json
+    if (-not $j.id) { return @{ Ok = $false; Status = [int]$r.StatusCode; Error = "no session id" } }
+    return @{ Ok = $true; Status = [int]$r.StatusCode; Error = "" }
+  } catch {
+    $resp = $_.Exception.Response
+    if ($resp) { return @{ Ok = $false; Status = [int]$resp.StatusCode; Error = "HTTP $([int]$resp.StatusCode)" } }
+    return @{ Ok = $false; Status = 0; Error = $_.Exception.Message }
+  }
+}
+
+function Test-WebDavBasic([string]$url, [string]$username, [string]$password) {
+  try {
+    $pair = "{0}:{1}" -f $username, $password
+    $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($pair))
+    $headers = @{ Authorization = "Basic $b64"; Depth = "0" }
+    $prev = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
+    try {
+      try {
+        $r = Invoke-WebRequest -Uri $url -Method PROPFIND -Headers $headers -UseBasicParsing -TimeoutSec 30
+      } catch {
+        $r = Invoke-WebRequest -Uri $url -Method GET -Headers @{ Authorization = "Basic $b64" } -UseBasicParsing -TimeoutSec 30
+      }
+    } finally { $ProgressPreference = $prev }
+    $code = [int]$r.StatusCode
+    if ($code -ge 200 -and $code -lt 500 -and $code -ne 401 -and $code -ne 403) {
+      return @{ Ok = $true; Status = $code; Error = "" }
+    }
+    return @{ Ok = $false; Status = $code; Error = "HTTP $code" }
+  } catch {
+    $resp = $_.Exception.Response
+    if ($resp) {
+      $code = [int]$resp.StatusCode
+      if ($code -eq 401 -or $code -eq 403) { return @{ Ok = $false; Status = $code; Error = "HTTP $code (auth rejected)" } }
+      return @{ Ok = $false; Status = $code; Error = "HTTP $code (best-effort inconclusive)" }
+    }
+    return @{ Ok = $false; Status = 0; Error = $_.Exception.Message }
+  }
+}
+
+# --- verify sync credentials early (before long on-device work) ---
+if ($syncTarget -eq "joplinCloud") {
+  while ($true) {
+    Info "Verifying Joplin Cloud password for $joplinEmail..."
+    $vr = Test-JoplinCloudLogin $joplinEmail $joplinPass
+    if ($vr.Ok) {
+      Ok "Joplin Cloud credentials verified"
+      break
+    }
+    if ($vr.Status -eq 403 -or $vr.Status -eq 401) {
+      Warn "Joplin Cloud rejected email/password ($($vr.Error))."
+    } else {
+      Warn "Joplin Cloud verify failed: $($vr.Error)"
+    }
+    if ($NonInteractive) {
+      throw "NonInteractive: Joplin Cloud login failed for $joplinEmail ($($vr.Error)). Fix JOPLIN_EMAIL/JOPLIN_PASSWORD and re-run."
+    }
+    Write-Host "  1) Re-enter email/password and retry  [default]"
+    Write-Host "  2) Abort"
+    $c = Ask "Choice" "1"
+    if ($c -eq "2" -or $c -match '^(?i)a') { throw "Aborted: Joplin Cloud credentials not verified" }
+    $joplinEmail = Ask "Joplin Cloud email" $joplinEmail
+    $joplinPass = AskSecret "Joplin Cloud password"
+  }
+} elseif ($syncTarget -eq "joplinServer") {
+  while ($true) {
+    Info "Verifying Joplin Server login at $syncUrl ..."
+    $vr = Test-JoplinServerLogin $syncUrl $syncUser $syncPass
+    if ($vr.Ok) {
+      Ok "Joplin Server credentials verified"
+      break
+    }
+    Warn "Joplin Server verify failed: $($vr.Error)"
+    if ($NonInteractive) {
+      throw "NonInteractive: Joplin Server login failed ($($vr.Error))."
+    }
+    if (-not (AskYes "Re-enter Joplin Server URL/username/password?" $true)) {
+      throw "Aborted: Joplin Server credentials not verified"
+    }
+    $syncUrl = Ask "Sync server URL" $syncUrl
+    $syncUser = Ask "Sync username" $syncUser
+    $syncPass = AskSecret "Sync password"
+  }
+} elseif ($syncTarget -in @("webdav","nextcloud")) {
+  Info "Best-effort verify of $syncTarget credentials (not all servers support the same probe)..."
+  $vr = Test-WebDavBasic $syncUrl $syncUser $syncPass
+  if ($vr.Ok) {
+    Ok "$syncTarget credentials look OK (HTTP $($vr.Status))"
+  } else {
+    Warn "$syncTarget verify inconclusive or failed: $($vr.Error)"
+    Warn "Installer will continue; fix URL/username/password if jonobones init fails later."
+    if ($NonInteractive) {
+      Warn "NonInteractive: continuing despite $syncTarget verify result (best-effort only)."
+    } elseif (-not (AskYes "Continue with these $syncTarget credentials anyway?" $true)) {
+      throw "Aborted: $syncTarget credentials not accepted"
+    }
+  }
+}
+
 if (-not $sec.ContainsKey("E2EE_MASTER_PASSWORD") -and -not $NonInteractive) {
   if (AskYes "Does this Joplin vault use E2EE (master password)?" $false) {
     $e2ee = AskSecret "E2EE master password"
@@ -304,6 +433,73 @@ $answerLines = New-Object System.Collections.Generic.List[string]
 function Test-RmKeyAuth {
   $out = & ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new "${User}@${HostName}" "echo ok" 2>$null
   return ($LASTEXITCODE -eq 0 -and ("$out".Trim() -eq "ok"))
+}
+
+function Test-RmSshHostReachable {
+  # Reachable if key auth works OR the SSH daemon answers with an auth failure.
+  $errFile = Join-Path $env:TEMP ("rm-ssh-probe-{0}.txt" -f [guid]::NewGuid().ToString("n"))
+  try {
+    $out = & ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -o NumberOfPasswordPrompts=0 "${User}@${HostName}" "echo ok" 2>$errFile
+    if ($LASTEXITCODE -eq 0 -and ("$out".Trim() -eq "ok")) { return $true }
+    $err = ""
+    if (Test-Path $errFile) { $err = (Get-Content $errFile -Raw -ErrorAction SilentlyContinue) }
+    if ($err -match '(?i)Permission denied|Authentication failed|Too many authentication|Host key verification failed') {
+      return $true
+    }
+    return $false
+  } catch {
+    return $false
+  } finally {
+    Remove-Item $errFile -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Update-RmSecretsHost([string]$newHost) {
+  $secPath = Join-Path $RepoRoot "conf\install.secrets"
+  if (-not (Test-Path $secPath)) { return }
+  $lines = @(Get-Content $secPath)
+  $found = $false
+  $newLines = foreach ($line in $lines) {
+    if ($line -match '^HOST=') { $found = $true; "HOST=$newHost" } else { $line }
+  }
+  if (-not $found) { $newLines = @("HOST=$newHost") + $newLines }
+  $newLines | Set-Content -Encoding utf8 $secPath
+}
+
+function Wait-RmSshHost {
+  while ($true) {
+    Info "Probing SSH to ${User}@${HostName}..."
+    if (Test-RmSshHostReachable) {
+      Ok "SSH host reachable at $HostName"
+      return
+    }
+    Warn "Cannot reach reMarkable over SSH at ${User}@${HostName}."
+    if ($NonInteractive) {
+      throw "SSH to ${User}@${HostName} failed (NonInteractive). Enable USB networking (plug in the tablet; default 10.11.99.1) or set -HostName / HOST to the tablet Wi-Fi IP, then re-run."
+    }
+    Write-Host ""
+    Write-Host "SSH connection failed. What do you want to do?"
+    Write-Host "  1) Check USB / enable USB networking / plug in tablet, then retry  [default]"
+    Write-Host "  2) Enter the tablet Wi-Fi IP address and retry with that host"
+    Write-Host "  3) Abort"
+    $choice = Ask "Choice" "1"
+    if ($choice -eq "3" -or $choice -match '^(?i)a(bort)?$') {
+      throw "Aborted: could not SSH to tablet at $HostName"
+    }
+    if ($choice -eq "2" -or $choice -match '^(?i)w') {
+      $newIp = (Ask "Tablet Wi-Fi IP").Trim()
+      if ([string]::IsNullOrWhiteSpace($newIp)) {
+        Warn "No IP entered - keeping $HostName"
+      } else {
+        $script:HostName = $newIp
+        Update-RmSecretsHost $script:HostName
+        Info "Updated target ${User}@${script:HostName}"
+      }
+    } else {
+      Write-Host "Plug in the tablet, unlock it, and enable USB networking if needed; then retry."
+      $null = Ask "Press Enter to retry USB/default host ($HostName)"
+    }
+  }
 }
 
 function Find-GitBash {
@@ -408,6 +604,9 @@ function Invoke-RemoteCapture([string]$remoteCmd) {
   return ($out | Out-String).Trim()
 }
 
+Info "Ensuring tablet SSH is reachable..."
+Wait-RmSshHost
+
 Info "Ensuring SSH key auth (password used at most once)..."
 Ensure-RmSshKey $sshPassword
 
@@ -465,7 +664,7 @@ New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 $dist = Join-Path $distDir "rm2hwr-linux-armv7"
 $releaseTag = $env:RM2_RELEASE_TAG
 if (-not $releaseTag) { $releaseTag = $env:RELEASE_TAG }
-if (-not $releaseTag) { $releaseTag = "v0.3.0" }
+if (-not $releaseTag) { $releaseTag = "v0.3.3" }
 $releaseAssetBase = "https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/$releaseTag"
 
 function Get-ReleaseAssetHttps([string]$Name, [string]$OutFile, [int]$MinSize = 100000) {
