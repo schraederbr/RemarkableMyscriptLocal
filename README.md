@@ -1,30 +1,18 @@
 # RemarkableMyscriptLocal — handwriting → Joplin on reMarkable 2
 
-Turn reMarkable 2 notebooks into **Joplin notes that sync with Joplin Cloud** (or WebDAV / Nextcloud / Joplin Server) **on the tablet itself**.
-
-Pipeline:
-
-1. **`rm2hwr`** (Go, on-device) reads xochitl `.rm` pages → MyScript HWR and/or content-fit SVGs → `NOTE.md` + `HANDOFF.json`
-2. **`jonobones`** (on-device Joplin-compatible sync daemon) keeps a local Joplin vault and **syncs directly with your Joplin account**
-3. **`joplin-upsert`** (or `rm2hwr --joplin-upsert`) **syncs FROM Joplin Cloud first** (`POST /sync` + wait idle) so title match sees Cloud notes, then creates/updates by **exact notebook title** (`visibleName`), **replacing** the marked HWR section (not forever-append), then syncs again to push
-
-You do **not** need desktop Joplin open for the sync path. The tablet talks to Joplin Cloud (or your sync target) through jonobones.
-
-> **Wi-Fi required** for Joplin Cloud sync (and MyScript when upload mode includes handwriting text). Install can use the **offline npm Release asset** (no registry on the tablet). USB is fine for SSH/deploy.
-
-Offline bundle docs: [docs/offline-npm-bundle.md](docs/offline-npm-bundle.md).
+Turn reMarkable 2 notebooks into **Joplin notes that sync with Joplin Cloud** (or WebDAV / Nextcloud / Joplin Server) **on the tablet itself**. You do **not** need desktop Joplin open for the sync path — the tablet talks to Joplin Cloud (or your sync target) through jonobones.
 
 ## Quick install
 
 ### Download and double-click (no paste required)
 
-From the [**v0.3.3** release](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/tag/v0.3.3):
+From the [**v0.3.4** release](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/tag/v0.3.4):
 
 | OS | Asset | How |
 |----|-------|-----|
-| **Windows** | [`install-rm2-windows.exe`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.3/install-rm2-windows.exe) | Double-click (console stays open for prompts). Fallback: [`install-rm2-windows.cmd`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.3/install-rm2-windows.cmd) |
-| **Linux** | [`install-rm2-linux`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.3/install-rm2-linux) | `chmod +x install-rm2-linux && ./install-rm2-linux` (or double-click from a file manager that runs executables in a terminal) |
-| **macOS** | [`install-rm2-macos.command`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.3/install-rm2-macos.command) | Double-click (opens Terminal). First time: right-click → Open if Gatekeeper blocks |
+| **Windows** | [`install-rm2-windows.exe`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.4/install-rm2-windows.exe) | Double-click (console stays open for prompts). Fallback: [`install-rm2-windows.cmd`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.4/install-rm2-windows.cmd) |
+| **Linux** | [`install-rm2-linux`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.4/install-rm2-linux) | `chmod +x install-rm2-linux && ./install-rm2-linux` (or double-click from a file manager that runs executables in a terminal) |
+| **macOS** | [`install-rm2-macos.command`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.4/install-rm2-macos.command) | Double-click (opens Terminal). First time: right-click → Open if Gatekeeper blocks |
 
 SmartScreen / Gatekeeper may warn on first run — that is normal for unsigned downloadable installers.
 
@@ -33,18 +21,18 @@ SmartScreen / Gatekeeper may warn on first run — that is normal for unsigned d
 **Windows** (USB `10.11.99.1` by default — no local clone or Go required):
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.3/scripts/install-from-web.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.4/scripts/install-from-web.ps1 | iex"
 ```
 
 **Linux / macOS** (bash + curl + OpenSSH):
 
 ```
-curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.3/scripts/install-from-web.sh | bash
+curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.4/scripts/install-from-web.sh | bash
 ```
 
-Downloads the **`v0.3.3`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
+Downloads the **`v0.3.4`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
 
-**v0.3.3** includes: SSH-fail recovery (retry USB / enter Wi-Fi IP); early Joplin Cloud password verify against `api.joplincloud.com`; Linux/macOS `install-from-web.sh` + double-click launchers; plus v0.3.2 behaviors (upload mode first / MyScript keys only for text; Joplin sync-before-title-match; SVG stroke widths; plain HWR headers).
+**v0.3.4** includes: Quick-install-first README; **no duplicate H1** in Joplin note body (title stays in Joplin title field only — #16); plus v0.3.3 installer UX (SSH-fail recovery, early Joplin Cloud password verify, Linux/macOS + double-click launchers) and earlier behaviors (upload mode first / MyScript keys only for text; Joplin sync-before-title-match; SVG stroke widths; plain HWR headers).
 
 From a local clone (optional):
 
@@ -72,6 +60,16 @@ Have ready (see [docs/install-checklist.md](docs/install-checklist.md)):
 
 The installer collects credentials up front, verifies Joplin Cloud login early, deploys `rm2hwr` + Node/jonobones/sqlite, runs the long steps under `nohup` (survives dropped SSH), and scripted `jonobones init` + start.
 
+## How it works (pipeline)
+
+1. **`rm2hwr`** (Go, on-device) reads xochitl `.rm` pages → MyScript HWR and/or content-fit SVGs → `NOTE.md` + `HANDOFF.json`
+2. **`jonobones`** (on-device Joplin-compatible sync daemon) keeps a local Joplin vault and **syncs directly with your Joplin account**
+3. **`joplin-upsert`** (or `rm2hwr --joplin-upsert`) **syncs FROM Joplin Cloud first** (`POST /sync` + wait idle) so title match sees Cloud notes, then creates/updates by **exact notebook title** (`visibleName`), **replacing** the marked HWR section (not forever-append), then syncs again to push
+
+> **Wi-Fi required** for Joplin Cloud sync (and MyScript when upload mode includes handwriting text). Install can use the **offline npm Release asset** (no registry on the tablet). USB is fine for SSH/deploy.
+
+Offline bundle docs: [docs/offline-npm-bundle.md](docs/offline-npm-bundle.md).
+
 ## Day-to-day: HWR → Joplin
 
 **Supported UI path (optional):** if you use [Oxide](https://oxide.eeems.website/) on the tablet, tap the **Sync Joplin** tile (`syncjoplin.oxide` → `sync-now.sh` → `systemctl start hwr-sync-recent.service`). Oxide is only a launcher — not required for core install; CLI and the systemd timer work without it.
@@ -94,7 +92,7 @@ jonobones sync
 
 Matching rule: **exact title** = reMarkable `visibleName`. Existing Joplin note → **replace** `<!-- rm2hwr:begin -->`…`<!-- rm2hwr:end -->` block (preserves content outside); missing → create with markers under `JONOBONES_PARENT_ID` / `JONOBONES_PARENT_TITLE`, or (if unset) the notebook with the **most notes**.
 
-HWR markdown uses plain text lines `Remarkable:` and `Page N` (not `##` headings), plus optional `![Page N](….svg)` image embeds.
+HWR markdown uses plain text lines `Remarkable:` and `Page N` (not `##` headings), plus optional `![Page N](….svg)` image embeds. The note body does **not** repeat an `# title` H1 — Joplin already shows `visibleName` as the note title.
 
 Manual one-shot is above. **Automatic:** systemd timer `hwr-sync-recent.timer` runs `sync-recent.sh` every `SYNC_INTERVAL_HOURS` (default 6; RM2 has no crond): last-30-day notebooks, skip unchanged pages via state sidecars, else `rm2hwr --joplin-upsert`.
 

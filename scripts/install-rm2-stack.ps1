@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Host-side installer for rm2hwr + jonobones on reMarkable 2.
 
@@ -664,7 +664,7 @@ New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 $dist = Join-Path $distDir "rm2hwr-linux-armv7"
 $releaseTag = $env:RM2_RELEASE_TAG
 if (-not $releaseTag) { $releaseTag = $env:RELEASE_TAG }
-if (-not $releaseTag) { $releaseTag = "v0.3.3" }
+if (-not $releaseTag) { $releaseTag = "v0.3.4" }
 $releaseAssetBase = "https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/$releaseTag"
 
 function Get-ReleaseAssetHttps([string]$Name, [string]$OutFile, [int]$MinSize = 100000) {

@@ -508,7 +508,7 @@ fi
 
 # Binary: prefer dist, else HTTPS release
 DIST="$ROOT/dist/rm2hwr-linux-armv7"
-RELEASE_TAG="${RM2_RELEASE_TAG:-${RELEASE_TAG:-v0.3.3}}"
+RELEASE_TAG="${RM2_RELEASE_TAG:-${RELEASE_TAG:-v0.3.4}}"
 RELEASE_BASE="https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/${RELEASE_TAG}"
 if [[ -f "$DIST" && $(wc -c <"$DIST") -gt 100000 ]]; then
   ok "Using existing binary $DIST"
