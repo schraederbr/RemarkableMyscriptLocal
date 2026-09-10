@@ -6,12 +6,12 @@ Gather these **before** running `scripts/install-rm2-stack.ps1`. The installer a
 
 | Item | Where it comes from | Used for |
 |------|---------------------|----------|
-| **Tablet Wi-Fi + internet** | Tablet network settings | Joplin Cloud sync + MyScript API (npm only if the offline Release asset is missing) |
+| **Tablet Wi-Fi + internet** | Tablet network settings | Joplin Cloud sync; MyScript API only if upload mode includes text (npm only if the offline Release asset is missing) |
 | Tablet reachability for SSH | USB â†’ `10.11.99.1`, or Wiâ€‘Fi IP | `ssh` / `scp` (USB OK for deploy; Wi-Fi still required for the steps above) |
 | reMarkable SSH password | Settings â†’ Help â†’ Copyrights and licenses | One-time PC SSH key install |
-| MyScript account + `APP_KEY` | [Sign up / console](https://developer.myscript.com/) | HWR (required) |
-| MyScript `HMAC_KEY` | Same app (optional) | Blank OK if HMAC disabled |
-| Joplin **upload mode** | Installer prompt (or `UPLOAD_MODE` in secrets) | `text` / `svg` / `both` (default **both**) |
+| Joplin **upload mode** | Installer prompt (or `UPLOAD_MODE` in secrets) | `text` / `svg` / `both` (default **both**). Ask this first. |
+| MyScript account + `APP_KEY` | [Sign up / console](https://developer.myscript.com/) | **Required only** when mode is `text` or `both` (skipped for SVG-only) |
+| MyScript `HMAC_KEY` | Same app (optional) | Blank OK if HMAC disabled; not prompted for SVG-only |
 | **Sync interval (hours)** | Installer prompt (or `SYNC_INTERVAL_HOURS`) | Default **6**; `0` skips systemd timer |
 | Joplin **notebook for NEW notes** | Installer prompt (or `JONOBONES_PARENT_ID` / `JONOBONES_PARENT_TITLE`) | Blank = **auto** (most notes at create); or exact title / 32-hex id |
 | Joplin Cloud email + password | [joplincloud.com](https://joplincloud.com/) | **Direct sync** via jonobones on the tablet |

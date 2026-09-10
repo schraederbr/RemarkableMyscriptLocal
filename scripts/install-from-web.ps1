@@ -13,9 +13,10 @@
   Prerequisites (printed up front):
     - USB cable (or set HOST to Wi-Fi IP)
     - reMarkable SSH password
-    - MyScript APP_KEY (HMAC_KEY optional)
+    - Joplin upload mode (SVG only skips MyScript keys)
+    - MyScript APP_KEY (HMAC optional) only if handwriting text / both
     - Joplin Cloud email + password
-    - Tablet Wi-Fi with internet (Joplin Cloud + MyScript)
+    - Tablet Wi-Fi with internet (Joplin Cloud; MyScript only if text/HWR)
 #>
 $ErrorActionPreference = "Stop"
 
@@ -49,9 +50,10 @@ Write-Host "Have these ready BEFORE continuing:"
 Write-Host "  1) USB cable to the reMarkable 2 (default host $HostName)"
 Write-Host "     Or set env HOST=<tablet-wifi-ip> before running."
 Write-Host "  2) reMarkable SSH password (Settings -> Help -> Copyrights and licenses)"
-Write-Host "  3) MyScript APP_KEY (HMAC_KEY optional) from https://developer.myscript.com/"
-Write-Host "  4) Joplin Cloud email + password"
-Write-Host "  5) Tablet Wi-Fi ON with internet (Joplin Cloud sync + MyScript)"
+Write-Host "  3) Joplin upload mode choice: SVG only / handwriting text / both"
+Write-Host "  4) MyScript APP_KEY (HMAC optional) — only if you want handwriting text (text or both)"
+Write-Host "  5) Joplin Cloud email + password"
+Write-Host "  6) Tablet Wi-Fi ON with internet (Joplin Cloud; MyScript only if text/HWR)"
 Write-Host ""
 Write-Host "This script downloads release source + assets over HTTPS (no gh CLI required),"
 Write-Host "then runs install-rm2-stack.ps1 -SkipBuild so Go is not required."
