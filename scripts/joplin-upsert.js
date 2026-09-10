@@ -184,10 +184,16 @@ function loadPayload(argv) {
   }
   const md = path.join(dir, 'NOTE.md');
   if (!fs.existsSync(md)) die('no HANDOFF.json or NOTE.md in ' + dir);
-  const titleLine = fs.readFileSync(md, 'utf8').split(/\r?\n/)[0] || '';
-  const title = titleLine.replace(/^#\s*/, '').trim() || path.basename(dir);
+  const mdText = fs.readFileSync(md, 'utf8');
+  const titleLine = mdText.split(/\r?\n/)[0] || '';
+  // Legacy NOTE.md started with "# <visibleName>"; current bodies start with Remarkable:
+  let title = '';
+  if (/^#\s+/.test(titleLine) && !/^#+\s*Page\s+\d+/i.test(titleLine)) {
+    title = titleLine.replace(/^#\s*/, '').trim();
+  }
+  if (!title) title = path.basename(dir);
   return {
-    payload: { title, fullText: fs.readFileSync(md, 'utf8'), docUuid: path.basename(dir) },
+    payload: { title, fullText: mdText, docUuid: path.basename(dir) },
     dir,
   };
 }
@@ -249,10 +255,20 @@ function wantText(mode) {
   return mode === 'text' || mode === 'both';
 }
 
+
+/** Strip a leading "# <title>" H1 when it duplicates the Joplin note title field. */
+function stripLeadingTitleH1(body, title) {
+  const t = String(title || '').trim();
+  if (!t) return String(body || '');
+  const re = new RegExp('^#\\s+' + escapeRegExp(t) + '\\s*\\r?\\n+', '');
+  return String(body || '').replace(re, '');
+}
+
 async function buildBodyWithResources(base, token, payload, dir, mode) {
   let body = payload.fullText || '';
   if (!body && Array.isArray(payload.pages)) {
-    const lines = ['# ' + (payload.title || '')];
+    // No H1 title in body — Joplin already displays the note title field.
+    const lines = [];
     let first = true;
     for (const p of payload.pages) {
       if (p.status !== 'OK' && p.status !== 'EMPTY' && p.status !== 'SKIP') continue;
@@ -260,14 +276,16 @@ async function buildBodyWithResources(base, token, payload, dir, mode) {
       const hasSvg = wantSVG(mode) && p.svgPath;
       const text = wantText(mode) ? String(p.text || '').replace(/\n+$/, '') : '';
       if (!hasSvg && !text) continue;
-      lines.push(first ? '' : '');
-      if (!first) lines.push('---', '');
+      if (!first) lines.push('', '---', '');
       first = false;
       lines.push('Remarkable:', 'Page ' + pageN, '');
       if (hasSvg) lines.push('![Page ' + pageN + '](' + path.basename(p.svgPath) + ')', '');
       if (text) lines.push(text);
     }
     body = lines.join('\n') + '\n';
+  } else {
+    // Drop legacy "# <title>" H1 from older HANDOFF/NOTE.md so Joplin body has no duplicate heading.
+    body = stripLeadingTitleH1(body, payload.title);
   }
 
   if (!wantSVG(mode)) return body;
@@ -340,7 +358,9 @@ function wrapHwrBlock(hwrBody, docUuid) {
 function looksLikeHwrOnly(body) {
   const t = String(body || '').trim();
   if (!t) return true;
-  // Legacy ## Page N headings, or new plain Remarkable: / Page N lines
+  // Current HWR: plain Remarkable: / Page N (no leading H1 title)
+  if (/^Remarkable:\s*\nPage\s+\d+/.test(t)) return true;
+  // Legacy: leading # title plus ## Page N or Remarkable: / Page N
   if (/^#\s/.test(t) && (/##\s+Page\s+\d+/.test(t) || /(?:^|\n)Remarkable:\s*\nPage\s+\d+/.test(t))) return true;
   const m = t.match(OLD_SEP_RE);
   if (m) {

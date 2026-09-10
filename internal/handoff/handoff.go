@@ -32,19 +32,17 @@ type Payload struct {
 	FullText   string `json:"fullText"`
 }
 
-// BuildFullText concatenates pages into markdown suitable for Joplin.
-// mode is text|svg|both (empty → text). Includes OK pages and SKIP pages that
-// still have content (text and/or svgPath). Image lines use local filenames;
-// joplin-upsert rewrites them to :/resourceId after upload.
-func BuildFullText(title string, pages []Page, mode string) string {
+// BuildFullText concatenates pages into markdown suitable for the Joplin note body.
+// Does not include an H1 title — Joplin already shows the note title field
+// (reMarkable visibleName). mode is text|svg|both (empty → text). Includes OK
+// pages and SKIP pages that still have content (text and/or svgPath). Image
+// lines use local filenames; joplin-upsert rewrites them to :/resourceId after upload.
+func BuildFullText(pages []Page, mode string) string {
 	mode = myscript.NormalizeUploadMode(mode)
 	wantText := mode == "text" || mode == "both"
 	wantSVG := mode == "svg" || mode == "both"
 
 	var b strings.Builder
-	b.WriteString("# ")
-	b.WriteString(title)
-	b.WriteString("\n")
 	first := true
 	for _, p := range pages {
 		if p.Status != "OK" && p.Status != "EMPTY" && p.Status != "SKIP" {
@@ -58,8 +56,6 @@ func BuildFullText(title string, pages []Page, mode string) string {
 		}
 		if !first {
 			b.WriteString("\n\n---\n\n")
-		} else {
-			b.WriteString("\n")
 		}
 		first = false
 		pageN := p.Index + 1
@@ -84,7 +80,7 @@ func WriteArtifacts(docOutDir, title, docUUID, uploadMode string, pages []Page) 
 		return err
 	}
 	mode := myscript.NormalizeUploadMode(uploadMode)
-	full := BuildFullText(title, pages, mode)
+	full := BuildFullText(pages, mode)
 	payload := Payload{
 		Title:      title,
 		DocUUID:    docUUID,
