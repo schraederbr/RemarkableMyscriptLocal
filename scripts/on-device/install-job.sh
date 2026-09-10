@@ -61,6 +61,7 @@ if [ "${START_JONOBONES:-1}" = "1" ]; then
   fi
   sleep 3
   jonobones status || true
+  echo "NOTE: first jonobones <-> Joplin Cloud sync may take a LONG time (tens of minutes+ on large vaults). Keep Wi-Fi on; do not assume install failed while syncing. See /tmp/jonobones-start.log"
 fi
 
 rm2_phase ok

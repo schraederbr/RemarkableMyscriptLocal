@@ -3,14 +3,14 @@
 # then run install-rm2-stack.sh --skip-build.
 #
 # Intended for:
-#   curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.4/scripts/install-from-web.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.5/scripts/install-from-web.sh | bash
 #
 # Defaults (override via env):
-#   RELEASE_TAG / RM2_RELEASE_TAG = v0.3.4
+#   RELEASE_TAG / RM2_RELEASE_TAG = v0.3.5
 #   HOST                           = 10.11.99.1
 set -euo pipefail
 
-RELEASE_TAG="${RELEASE_TAG:-${RM2_RELEASE_TAG:-v0.3.4}}"
+RELEASE_TAG="${RELEASE_TAG:-${RM2_RELEASE_TAG:-v0.3.5}}"
 HOST="${HOST:-10.11.99.1}"
 REPO_OWNER="schraederbr"
 REPO_NAME="RemarkableMyscriptLocal"
