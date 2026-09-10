@@ -10,7 +10,7 @@ Pipeline:
 
 You do **not** need desktop Joplin open for the sync path. The tablet talks to Joplin Cloud (or your sync target) through jonobones.
 
-> **Wi-Fi required** for Joplin Cloud sync (and MyScript). Install can use the **offline npm Release asset** (no registry on the tablet). USB is fine for SSH/deploy.
+> **Wi-Fi required** for Joplin Cloud sync (and MyScript when upload mode includes handwriting text). Install can use the **offline npm Release asset** (no registry on the tablet). USB is fine for SSH/deploy.
 
 Offline bundle docs: [docs/offline-npm-bundle.md](docs/offline-npm-bundle.md).
 
@@ -35,9 +35,9 @@ Have ready (see [docs/install-checklist.md](docs/install-checklist.md)):
 
 - **USB cable** (or set `HOST` to the tablet Wi-Fi IP)
 - reMarkable SSH password (installer installs your PC SSH key once — no manual key setup)
-- MyScript `APP_KEY` (optional `HMAC_KEY`) from [developer.myscript.com](https://developer.myscript.com/)
+- Joplin upload mode: SVG only / handwriting text / both (installer default: both)
+- MyScript `APP_KEY` (optional `HMAC_KEY`) from [developer.myscript.com](https://developer.myscript.com/) — **only if** mode is text or both (SVG-only skips these prompts)
 - Joplin Cloud email + password (or another sync target)
-- Joplin upload mode: text / SVG / both (installer default: both)
 - Periodic sync interval hours (installer default: **6**; `0` disables systemd timer)
 - Joplin notebook for **NEW** notes: blank = auto (notebook with most notes); or exact title / 32-hex id
 - Optional E2EE master password
@@ -77,7 +77,7 @@ Handoff / replace markers / systemd timer: [docs/joplin-sync.md](docs/joplin-syn
 
 | Piece | Role |
 |-------|------|
-| `rm2hwr` | Parse `.rm` (v5 + v6 auto-detect), call MyScript, write `out/<uuid>/` |
+| `rm2hwr` | Parse `.rm` (v5 + v6 auto-detect), MyScript HWR and/or SVG, write `out/<uuid>/` |
 | Node 20 + jonobones | Local Joplin vault + **direct sync** to Joplin Cloud/Server/WebDAV |
 | Revcord `node_sqlite3.node` | ARMv7 sqlite binding (vendored in `third_party/revcord/`) |
 | `joplin-upsert.js` | Sync-pull → title-match upsert → sync-push (`127.0.0.1:26637`) |
@@ -105,12 +105,12 @@ Handoff / replace markers / systemd timer: [docs/joplin-sync.md](docs/joplin-syn
 Sign up / keys: [developer.myscript.com](https://developer.myscript.com/)
 
 ```
-APP_KEY=          # required
+APP_KEY=          # required for text|both; leave empty for SVG-only
 HMAC_KEY=         # optional
 LANG=en_US
 CONTENT_TYPE=Text
 API_URL=https://cloud.myscript.com/api/v4.0/iink/batch
-UPLOAD_MODE=both  # text | svg | both (unset → text for old installs)
+UPLOAD_MODE=both  # text | svg | both (unset → text for old installs; svg skips MyScript)
 SYNC_INTERVAL_HOURS=6  # systemd timer for sync-recent.sh; 0 disables
 ```
 

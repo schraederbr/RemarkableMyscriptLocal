@@ -9,8 +9,8 @@
   Required from each person (prompted if missing):
     - Tablet host (USB 10.11.99.1 or Wi-Fi IP)
     - reMarkable SSH password (auto-installs your PC SSH key once)
-    - MyScript APP_KEY (HMAC_KEY optional); https://developer.myscript.com/
     - Joplin upload mode (text / SVG / both; default both)
+    - MyScript APP_KEY (HMAC_KEY optional) only if mode is text or both
     - Periodic sync interval hours (default 6; 0 disables systemd timer)
     - Joplin notebook for NEW notes (blank=auto most notes; or title / 32-hex id)
     - Joplin Cloud email + password (or other sync target fields)
@@ -85,13 +85,13 @@ Info "Repo: $RepoRoot"
 Write-Host ""
 Write-Host "What this installer will ask for (have these ready):"
 Write-Host "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
-Write-Host "  2) MyScript APP_KEY (HMAC_KEY optional) - https://developer.myscript.com/"
-Write-Host "  3) Joplin upload mode: text / SVG / both (default both)"
+Write-Host "  2) Joplin upload mode: SVG only / handwriting text / both (default both)"
+Write-Host "  3) MyScript APP_KEY (HMAC optional) - only if you want handwriting text (text or both)"
 Write-Host "  4) Periodic sync interval hours (default 6; 0=disable systemd timer)"
 Write-Host "  5) Joplin notebook for NEW notes (blank=auto most notes; or title/id)"
 Write-Host "  6) Joplin Cloud email + password"
 Write-Host "  7) Optional: Joplin E2EE master password"
-Write-Host "  8) Tablet on Wi-Fi with internet (Joplin Cloud; npm only if offline bundle missing)"
+Write-Host "  8) Tablet on Wi-Fi with internet (Joplin Cloud; MyScript only if text/HWR; npm if offline bundle missing)"
 Write-Host "  See docs/install-checklist.md"
 Write-Host ""
 
@@ -133,21 +133,9 @@ if (-not $sshPassword) {
   }
 }
 
-$appKey = $sec["APP_KEY"]
-$hmacKey = $sec["HMAC_KEY"]
 $lang = if ($sec["LANG"]) { $sec["LANG"] } else { "en_US" }
-if (-not $appKey) {
-  Write-Host ""
-  Write-Host "MyScript Cloud - create a free app and copy keys:"
-  Write-Host "  https://developer.myscript.com/"
-  Write-Host ""
-  $appKey = Ask "MyScript APP_KEY"
-}
-if (-not $sec.ContainsKey("HMAC_KEY") -and -not $hmacKey) {
-  Write-Host "HMAC_KEY is optional (leave blank if HMAC is disabled in the MyScript dashboard)."
-  $hmacKey = Ask "MyScript HMAC_KEY (optional, blank OK)"
-}
 
+# Upload mode first — MyScript keys only needed for handwriting text (text|both)
 $uploadMode = if ($sec["UPLOAD_MODE"]) { $sec["UPLOAD_MODE"].Trim().ToLowerInvariant() } else { "" }
 if ($uploadMode -notin @("text","svg","both")) {
   if ($NonInteractive) {
@@ -155,8 +143,8 @@ if ($uploadMode -notin @("text","svg","both")) {
   } else {
     Write-Host ""
     Write-Host "What should rm2hwr upload to Joplin?"
-    Write-Host "  1) MyScript text only"
-    Write-Host "  2) Page SVG images only"
+    Write-Host "  1) Handwriting text only (MyScript HWR — needs APP_KEY)"
+    Write-Host "  2) SVG only (page images — no MyScript keys)"
     Write-Host "  3) Both text and SVG  [default]"
     $umChoice = Ask "Choice" "3"
     switch ($umChoice) {
@@ -164,6 +152,33 @@ if ($uploadMode -notin @("text","svg","both")) {
       "2" { $uploadMode = "svg" }
       default { $uploadMode = "both" }
     }
+  }
+}
+
+$appKey = $sec["APP_KEY"]
+$hmacKey = $sec["HMAC_KEY"]
+if ($null -eq $appKey) { $appKey = "" }
+if ($null -eq $hmacKey) { $hmacKey = "" }
+if ($uploadMode -eq "svg") {
+  # SVG-only: skip MyScript prompts; leave keys empty (or keep secrets if already set)
+  if (-not $appKey) { $appKey = "" }
+  if (-not $hmacKey) { $hmacKey = "" }
+  Ok "UPLOAD_MODE=svg — skipping MyScript APP_KEY/HMAC_KEY prompts"
+} else {
+  if (-not $appKey) {
+    if ($NonInteractive) {
+      throw "NonInteractive requires APP_KEY in secrets file when UPLOAD_MODE is text or both"
+    }
+    Write-Host ""
+    Write-Host "MyScript Cloud - create a free app and copy keys (needed for handwriting text):"
+    Write-Host "  https://developer.myscript.com/"
+    Write-Host ""
+    $appKey = Ask "MyScript APP_KEY"
+    if (-not $appKey) { throw "MyScript APP_KEY is required when UPLOAD_MODE is $uploadMode" }
+  }
+  if (-not $sec.ContainsKey("HMAC_KEY") -and -not $hmacKey) {
+    Write-Host "HMAC_KEY is optional (leave blank if HMAC is disabled in the MyScript dashboard)."
+    $hmacKey = Ask "MyScript HMAC_KEY (optional, blank OK)"
   }
 }
 
