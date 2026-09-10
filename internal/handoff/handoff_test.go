@@ -15,12 +15,12 @@ func TestBuildFullTextTextMode(t *testing.T) {
 		{Index: 2, PageUUID: "c", Status: "SKIP", Text: "ignored"},
 		{Index: 3, PageUUID: "d", Status: "OK", Text: "world"},
 	}
-	got := BuildFullText("9-8-26", pages, "text")
-	if !strings.HasPrefix(got, "# 9-8-26\n") {
-		t.Fatalf("title missing: %q", got)
+	got := BuildFullText(pages, "text")
+	if strings.HasPrefix(got, "# ") {
+		t.Fatalf("body must not start with H1 title (Joplin shows title field): %q", got)
 	}
-	if !strings.Contains(got, "Remarkable:\nPage 1") {
-		t.Fatalf("Remarkable header missing: %q", got)
+	if !strings.HasPrefix(got, "Remarkable:\nPage 1") {
+		t.Fatalf("expected body to start with Remarkable header: %q", got)
 	}
 	if !strings.Contains(got, "Remarkable:\nPage 1\n\nhello") {
 		t.Fatalf("page 1 missing: %q", got)
@@ -49,7 +49,7 @@ func TestBuildFullTextSVGAndBoth(t *testing.T) {
 		{Index: 1, PageUUID: "b", Status: "OK", Text: "", SvgPath: "b.svg"},
 		{Index: 2, PageUUID: "c", Status: "EMPTY", Text: ""},
 	}
-	svgOnly := BuildFullText("Note", pages, "svg")
+	svgOnly := BuildFullText(pages, "svg")
 	if !strings.Contains(svgOnly, "![Page 1](a.svg)") {
 		t.Fatalf("svg page1: %q", svgOnly)
 	}
@@ -63,7 +63,7 @@ func TestBuildFullTextSVGAndBoth(t *testing.T) {
 		t.Fatalf("empty page in svg: %q", svgOnly)
 	}
 
-	both := BuildFullText("Note", pages, "both")
+	both := BuildFullText(pages, "both")
 	if !strings.Contains(both, "![Page 1](a.svg)\n\nhello") {
 		t.Fatalf("both page1: %q", both)
 	}
@@ -85,8 +85,11 @@ func TestWriteArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(md), "# Test Note") {
-		t.Fatalf("NOTE.md: %s", md)
+	if strings.Contains(string(md), "# Test Note") {
+		t.Fatalf("NOTE.md must not contain H1 title: %s", md)
+	}
+	if !strings.HasPrefix(string(md), "Remarkable:\nPage 1") {
+		t.Fatalf("NOTE.md should start with Remarkable header: %s", md)
 	}
 	if !strings.Contains(string(md), "![Page 1](p1.svg)") {
 		t.Fatalf("NOTE.md missing image: %s", md)
@@ -101,6 +104,9 @@ func TestWriteArtifacts(t *testing.T) {
 	}
 	if p.Title != "Test Note" || p.DocUUID != "doc-uuid" || p.FullText == "" {
 		t.Fatalf("payload: %+v", p)
+	}
+	if strings.HasPrefix(p.FullText, "# ") {
+		t.Fatalf("FullText must not start with H1 title: %q", p.FullText)
 	}
 	if p.UploadMode != "both" {
 		t.Fatalf("uploadMode: %q", p.UploadMode)
