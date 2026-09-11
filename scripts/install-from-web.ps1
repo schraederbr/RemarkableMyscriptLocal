@@ -1,10 +1,10 @@
 # One-liner Windows bootstrap: download RemarkableMyscriptLocal release + assets, then run install-rm2-stack.ps1.
 #
 # Intended for (download then -File; never irm|iex):
-#   powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.8/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell -NoProfile -ExecutionPolicy Bypass -File $f"
+#   powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.9/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell -NoProfile -ExecutionPolicy Bypass -File $f"
 #
 # Defaults (override via env):
-#   RELEASE_TAG / RM2_RELEASE_TAG = v0.3.8
+#   RELEASE_TAG / RM2_RELEASE_TAG = v0.3.9
 #   HOST                           = 10.11.99.1
 #
 # Prerequisites (printed up front):
@@ -22,7 +22,7 @@ function Warn($msg) { Write-Host "!!  $msg" -ForegroundColor Yellow }
 
 $ReleaseTag = $env:RELEASE_TAG
 if (-not $ReleaseTag) { $ReleaseTag = $env:RM2_RELEASE_TAG }
-if (-not $ReleaseTag) { $ReleaseTag = "v0.3.8" }
+if (-not $ReleaseTag) { $ReleaseTag = "v0.3.9" }
 
 $HostName = $env:HOST
 if (-not $HostName) { $HostName = "10.11.99.1" }

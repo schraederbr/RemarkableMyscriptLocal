@@ -104,11 +104,22 @@ function lastModifiedMs(meta) {
   return 0;
 }
 
-function pageSnapshot(docUuid, pages) {
+function pageIds(content) {
+  if (Array.isArray(content.pages) && content.pages.length) {
+    return content.pages.filter((id) => typeof id === 'string' && id);
+  }
+  const pages = content.cPages && Array.isArray(content.cPages.pages) ? content.cPages.pages : [];
+  return pages.map((page) => page && page.id).filter((id) => typeof id === 'string' && id);
+}
+
+function pageSnapshot(docUuid, pageIds) {
   const out = [];
-  for (const pageUuid of pages || []) {
+  for (const pageUuid of pageIds || []) {
     const rm = path.join(xochitl, docUuid, pageUuid + '.rm');
-    if (!fs.existsSync(rm)) continue;
+    if (!fs.existsSync(rm)) {
+      out.push({ pageUuid, missing: true });
+      continue;
+    }
     const st = fs.statSync(rm);
     out.push({
       pageUuid,
@@ -124,7 +135,7 @@ function pagesMatch(a, b) {
   const byId = new Map(b.map((p) => [p.pageUuid, p]));
   for (const p of a) {
     const o = byId.get(p.pageUuid);
-    if (!o || o.sha256 !== p.sha256 || Number(o.mtime) !== Number(p.mtime)) return false;
+    if (!o || Boolean(o.missing) !== Boolean(p.missing) || o.sha256 !== p.sha256 || Number(o.mtime || 0) !== Number(p.mtime || 0)) return false;
   }
   return true;
 }
@@ -138,9 +149,10 @@ for (const name of fs.readdirSync(xochitl)) {
   if (lm && lm < cutoff) continue;
   const content = loadJSON(path.join(xochitl, id + '.content'));
   if (!content) continue;
-  if (content.fileType && content.fileType !== 'notebook' && !(content.pages && content.pages.length)) continue;
+  const ids = pageIds(content);
+  if (content.fileType && content.fileType !== 'notebook' && !ids.length) continue;
 
-  const pages = pageSnapshot(id, content.pages || []);
+  const pages = pageSnapshot(id, ids);
   const statePath = path.join(stateDir, id + '.json');
   let skip = false;
   if (fs.existsSync(statePath)) {
@@ -168,18 +180,22 @@ while read -r action uuid; do
   [ "$action" = "RUN" ] || continue
 
   log "run $uuid"
+  RUN_LOG="/tmp/hwr-sync-run.$$"
   set +e
-  "$BIN" --uuid "$uuid" --joplin-upsert >>"$LOG" 2>&1
+  "$BIN" --uuid "$uuid" --joplin-upsert >"$RUN_LOG" 2>&1
   ec=$?
   set -e
+  cat "$RUN_LOG" >>"$LOG"
   if [ "$ec" -ne 0 ]; then
     log "FAIL rm2hwr $uuid exit=$ec"
     failed=$((failed + 1))
+    rm -f "$RUN_LOG"
     rm -f "$STATE_DIR/$uuid.pending.json"
     continue
   fi
 
-  note_id=$(tail -n 80 "$LOG" | sed -n 's/^NOTE_ID=//p' | tail -n1)
+  note_id=$(sed -n 's/^NOTE_ID=//p' "$RUN_LOG" | tail -n1)
+  rm -f "$RUN_LOG"
   PENDING="$STATE_DIR/$uuid.pending.json"
   if [ -f "$PENDING" ]; then
     NOTE_ID_CAP="$note_id" PENDING_PATH="$PENDING" STATE_PATH="$STATE_DIR/$uuid.json" node << 'NODE'

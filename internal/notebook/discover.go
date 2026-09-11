@@ -25,6 +25,27 @@ type Content struct {
 	Orientation string   `json:"orientation"`
 	PageCount   int      `json:"pageCount"`
 	Pages       []string `json:"pages"`
+	CPages      struct {
+		Pages []struct {
+			ID string `json:"id"`
+		} `json:"pages"`
+	} `json:"cPages"`
+}
+
+// PageIDs returns page UUIDs from both reMarkable content schemas. Firmware 2.x
+// uses a top-level string array (pages), while newer 3.x firmware uses objects
+// under cPages.pages with the UUID in each object's id field.
+func (c Content) PageIDs() []string {
+	if len(c.Pages) != 0 {
+		return c.Pages
+	}
+	ids := make([]string, 0, len(c.CPages.Pages))
+	for _, page := range c.CPages.Pages {
+		if page.ID != "" {
+			ids = append(ids, page.ID)
+		}
+	}
+	return ids
 }
 
 // Document is one notebook (or other document) under xochitl.
@@ -92,7 +113,7 @@ func Find(xochitlDir string, all bool, nameSubstr, uuid string) ([]*Document, er
 		}
 		if content.FileType != "" && content.FileType != "notebook" {
 			// Still allow notebooks; skip pdf/epub without pages.
-			if len(content.Pages) == 0 {
+			if len(content.PageIDs()) == 0 {
 				continue
 			}
 		}
@@ -116,7 +137,7 @@ func Find(xochitlDir string, all bool, nameSubstr, uuid string) ([]*Document, er
 // Pages returns page refs, optionally filtered by page UUID.
 func (d *Document) Pages(pageFilter string) []PageRef {
 	var out []PageRef
-	for i, pid := range d.Content.Pages {
+	for i, pid := range d.Content.PageIDs() {
 		if pageFilter != "" && pid != pageFilter {
 			continue
 		}

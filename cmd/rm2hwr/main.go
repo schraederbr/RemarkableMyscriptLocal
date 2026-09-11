@@ -87,17 +87,23 @@ func main() {
 		return
 	}
 
+	hadError := false
 	for _, doc := range docs {
 		docOut, err := processDoc(doc, *page, *outdir, *dryRun, env, client)
 		if err != nil {
 			log.Printf("document %s (%s): %v", doc.UUID, doc.Meta.VisibleName, err)
+			hadError = true
 			continue
 		}
 		if *joplinUpsert && !*dryRun && docOut != "" {
 			if err := runJoplinUpsert(*upsertBin, docOut); err != nil {
 				log.Printf("document %s: joplin-upsert: %v", doc.UUID, err)
+				hadError = true
 			}
 		}
+	}
+	if hadError {
+		os.Exit(1)
 	}
 }
 
@@ -139,6 +145,7 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 	}
 
 	var handoffPages []handoff.Page
+	hadPageError := false
 
 	for _, pref := range pages {
 		txtPath, jsonPath, _ := notebook.OutPaths(outdir, doc.UUID, pref.PageUUID)
@@ -180,6 +187,7 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 		page, err := rm.ParseFile(pref.RMPath)
 		if err != nil {
 			log.Printf("%s: parse: %v", linePrefix, err)
+			hadPageError = true
 			indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tERROR", pref.Index, pref.PageUUID))
 			handoffPages = append(handoffPages, handoff.Page{Index: pref.Index, PageUUID: pref.PageUUID, Status: "ERROR"})
 			continue
@@ -231,6 +239,7 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 			recognized, err := client.Recognize(body)
 			if err != nil {
 				log.Printf("%s: recognize: %v", linePrefix, err)
+				hadPageError = true
 				indexLines = append(indexLines, fmt.Sprintf("%d\t%s\tERROR", pref.Index, pref.PageUUID))
 				handoffPages = append(handoffPages, handoff.Page{Index: pref.Index, PageUUID: pref.PageUUID, Status: "ERROR", SvgPath: svgRel})
 				continue
@@ -273,5 +282,12 @@ func processDoc(doc *notebook.Document, pageFilter, outdir string, dryRun bool, 
 		return docOut, fmt.Errorf("handoff artifacts: %w", err)
 	}
 	log.Printf("document %s: wrote NOTE.md + HANDOFF.json (uploadMode=%s)", doc.UUID, env.UploadMode)
+	if hadPageError {
+		return docOut, fmt.Errorf("one or more pages failed")
+	}
+	if strings.TrimSpace(handoff.BuildFullText(handoffPages, env.UploadMode)) == "" {
+		log.Printf("document %s: no uploadable page content; skip Joplin upsert", doc.UUID)
+		return "", nil
+	}
 	return docOut, nil
 }
