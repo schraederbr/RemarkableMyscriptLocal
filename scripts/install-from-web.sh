@@ -21,6 +21,7 @@ OFFLINE_NAME="jonobones-rm2-npm-offline-0.1.5-joplin-3.7.1.tar.gz"
 NODE_TAR_NAME="node-v20.20.2-linux-armv7l.tar.xz"
 BINARY_NAME="rm2hwr-linux-armv7"
 SQLITE_NAME="node_sqlite3.node"
+LIBATOMIC_NAME="libatomic.so.1"
 
 info() { printf '==> %s\n' "$*"; }
 ok() { printf 'OK  %s\n' "$*"; }
@@ -120,6 +121,7 @@ download_asset "$BINARY_NAME" 100000
 download_asset "$OFFLINE_NAME" 1000000
 download_asset "$NODE_TAR_NAME" 1000000
 download_asset "$SQLITE_NAME" 100000
+download_asset "$LIBATOMIC_NAME" 10000
 cp -f "$DIST_DIR/$SQLITE_NAME" "$REVCORD_DIR/$SQLITE_NAME"
 ok "Copied $SQLITE_NAME into third_party/revcord"
 

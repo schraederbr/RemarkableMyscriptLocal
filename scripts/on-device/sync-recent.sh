@@ -23,6 +23,7 @@ LOG="${SYNC_RECENT_LOG:-/tmp/hwr-sync-recent.log}"
 DAYS="${SYNC_RECENT_DAYS:-30}"
 
 export PATH="/home/root/.npm-global/bin:/home/root/opt/node/bin:/home/root/hwr/bin:$PATH"
+export LD_LIBRARY_PATH="/home/root/hwr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 mkdir -p "$STATE_DIR"
 

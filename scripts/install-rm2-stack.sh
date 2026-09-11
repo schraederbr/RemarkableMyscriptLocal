@@ -589,10 +589,22 @@ else
   fi
 fi
 
+LIBATOMIC="$ROOT/dist/libatomic.so.1"
+if [[ ! -f "$LIBATOMIC" || $(wc -c <"$LIBATOMIC") -lt 10000 ]]; then
+  info "Downloading libatomic.so.1 for Node on Codex Linux firmware"
+  mkdir -p "$ROOT/dist"
+  if command -v curl >/dev/null; then
+    curl -fsSL -o "$LIBATOMIC" "$RELEASE_BASE/libatomic.so.1"
+  else
+    wget -q -O "$LIBATOMIC" "$RELEASE_BASE/libatomic.so.1"
+  fi
+fi
+[[ -f "$LIBATOMIC" && $(wc -c <"$LIBATOMIC") -ge 10000 ]] || { echo "ERROR: missing libatomic.so.1" >&2; exit 1; }
+
 # Deploy
 info "Deploying scripts and binary..."
 ssh -o BatchMode=yes -o ConnectTimeout=10 "${USER_NAME}@${HOST}" \
-  'mkdir -p /home/root/hwr/scripts /home/root/hwr/bin /home/root/hwr/conf /home/root/hwr/out /home/root/hwr/state /home/root/hwr/third_party/revcord /home/root/downloads'
+  'mkdir -p /home/root/hwr/scripts /home/root/hwr/bin /home/root/hwr/conf /home/root/hwr/lib /home/root/hwr/out /home/root/hwr/state /home/root/hwr/third_party/revcord /home/root/downloads'
 scp -o BatchMode=yes -o ConnectTimeout=10 \
   "$ROOT/scripts/on-device/install-node-jonobones.sh" \
   "$ROOT/scripts/on-device/jonobones-init-cloud.sh" \
@@ -604,6 +616,7 @@ if [[ -f "$ROOT/third_party/revcord/node_sqlite3.node" ]]; then
   scp -o BatchMode=yes "$ROOT/third_party/revcord/node_sqlite3.node" \
     "${USER_NAME}@${HOST}:/home/root/hwr/third_party/revcord/node_sqlite3.node"
 fi
+scp -o BatchMode=yes "$LIBATOMIC" "${USER_NAME}@${HOST}:/home/root/hwr/lib/libatomic.so.1"
 scp -o BatchMode=yes "$HWR_ENV" "${USER_NAME}@${HOST}:/home/root/hwr/conf/hwr.env"
 if [[ -f "$ANSWERS" && "$DO_INIT" == "1" ]]; then
   scp -o BatchMode=yes "$ANSWERS" "${USER_NAME}@${HOST}:/home/root/hwr/conf/jonobones-init-answers.txt"

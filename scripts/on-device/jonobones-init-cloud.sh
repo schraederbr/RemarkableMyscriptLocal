@@ -3,6 +3,7 @@
 # never need to be sourced by the shell.
 set -e
 export PATH=/home/root/.npm-global/bin:/home/root/opt/node/bin:$PATH
+export LD_LIBRARY_PATH=/home/root/hwr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 HWR=/home/root/hwr
 ANSWERS="${JONOBONES_INIT_ANSWERS:-$HWR/conf/jonobones-init-answers.txt}"
 PROFILE_DIR="${JONOBONES_PROFILE:-/home/root/.config/jonobones/default}"
