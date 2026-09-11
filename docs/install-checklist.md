@@ -1,13 +1,13 @@
-# Install checklist â€” what each person needs
+# Install checklist — what each person needs
 
-Gather these **before** running `scripts/install-rm2-stack.ps1`. The installer asks for credentials up front (upload mode first; MyScript keys only for text/both), verifies Joplin Cloud login early, installs your PC SSH key from the tablet password (no manual key setup), recovers from SSH failures (USB retry or Wi-Fi IP), then runs the long tablet work under `nohup`.
+Gather these **before** running `scripts/install-rm2-stack.ps1`. The installer asks for credentials up front (upload mode first; MyScript keys only for text/both), checks SSH immediately after the tablet password (before long steps), installs your PC SSH key from the tablet password (no manual key setup), recovers from SSH failures (USB retry, Wi-Fi IP / change HOST, **re-enter SSH password**, or abort), verifies Joplin Cloud login early, then runs the long tablet work under `nohup`.
 
 ## Required
 
 | Item | Where it comes from | Used for |
 |------|---------------------|----------|
 | **Tablet Wi-Fi + internet** | Tablet network settings | Joplin Cloud sync; MyScript API only if upload mode includes text (npm only if the offline Release asset is missing) |
-| Tablet reachability for SSH | USB â†’ `10.11.99.1`, or Wiâ€‘Fi IP | `ssh` / `scp` (USB OK for deploy; Wi-Fi still required for the steps above) |
+| Tablet reachability for SSH | USB → `10.11.99.1`, or Wi‑Fi IP | `ssh` / `scp` (USB OK for deploy; Wi-Fi still required for the steps above) |
 | reMarkable **root SSH password** | See **Finding the SSH password** below | One-time PC SSH key install |
 | Joplin **upload mode** | Installer prompt (or `UPLOAD_MODE` in secrets) | `text` / `svg` / `both` (default **both**). Ask this first. |
 | MyScript account + `APP_KEY` | [Sign up / console](https://developer.myscript.com/) | **Required only** when mode is `text` or `both` (skipped for SVG-only) |
@@ -34,19 +34,20 @@ Username is always `root`. The device-specific password is shown on the tablet:
 
 ## Already on the PC / in this repo
 
-- Go (cross-compile `rm2hwr`), OpenSSH, **Git for Windows** recommended (Git Bash for passwordâ†’key)
+- Go (cross-compile `rm2hwr`), OpenSSH, **Git for Windows** recommended (Git Bash for password→key)
 - Bundled `third_party/revcord/node_sqlite3.node`
 - Node 20 armv7l tarball fetched on the PC and copied over
 
 
 ## SSH connection recovery
 
-If the installer cannot SSH to the tablet (default USB `10.11.99.1`):
+SSH is checked **right after** you enter (or load) the reMarkable SSH password, before long download/deploy steps. If SSH fails (default USB `10.11.99.1` or your `HOST`):
 
-1. **Retry USB** — plug in the tablet, unlock it, enable USB networking / Ethernet over USB, then retry; **or**
-2. **Enter Wi-Fi IP** — type the tablet's Wi-Fi IP and the installer retries with that `HOST`.
+1. **Retry USB** - plug in the tablet, unlock it, enable USB networking / Ethernet over USB, then retry
+2. **Enter Wi-Fi IP / change HOST** - type the tablet's Wi-Fi IP and the installer retries with that `HOST`
+3. **Re-enter SSH password** - update the stored password (needed after a factory reset) without restarting the whole installer
+4. **Abort**
 
-Non-interactive runs fail immediately with a clear message (set `-HostName` / `HOST` correctly; do not hang).
 
 ## Joplin credentials verified early
 
@@ -61,6 +62,6 @@ The long on-device job runs under `nohup`. While `install-rm2-stack.ps1` (or `.s
 
 On-device logs: `/tmp/rm2-install.log`, `/tmp/jonobones-start.log`.  
 Upsert uses `http://127.0.0.1:26637` and the token in `/home/root/hwr/conf/jonobones.env` (optional `JONOBONES_PARENT_ID` / `JONOBONES_PARENT_TITLE` for NEW notes; unset = auto most-notes).  
-Recognized notes sync to Joplin through jonobones â€” keep Wi-Fi on for ongoing sync.
+Recognized notes sync to Joplin through jonobones — keep Wi-Fi on for ongoing sync.
 
 Periodic job: `sync-recent.sh` via **systemd timer** `hwr-sync-recent.timer` (default every 6h; RM2 has no crond). State: `/home/root/hwr/state/`. Log: `/tmp/hwr-sync-recent.log`. Change/disable: see [joplin-sync.md](joplin-sync.md).

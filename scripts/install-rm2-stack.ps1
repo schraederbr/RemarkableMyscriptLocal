@@ -74,6 +74,200 @@ function Read-DotEnv([string]$path) {
   return $map
 }
 
+function Test-RmKeyAuth {
+  $out = & ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new "${User}@${HostName}" "echo ok" 2>$null
+  return ($LASTEXITCODE -eq 0 -and ("$out".Trim() -eq "ok"))
+}
+
+function Test-RmSshHostReachable {
+  # Reachable if key auth works OR the SSH daemon answers with an auth failure.
+  $errFile = Join-Path $env:TEMP ("rm-ssh-probe-{0}.txt" -f [guid]::NewGuid().ToString("n"))
+  try {
+    $out = & ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -o NumberOfPasswordPrompts=0 "${User}@${HostName}" "echo ok" 2>$errFile
+    if ($LASTEXITCODE -eq 0 -and ("$out".Trim() -eq "ok")) { return $true }
+    $err = ""
+    if (Test-Path $errFile) { $err = (Get-Content $errFile -Raw -ErrorAction SilentlyContinue) }
+    if ($err -match '(?i)Permission denied|Authentication failed|Too many authentication|Host key verification failed') {
+      return $true
+    }
+    return $false
+  } catch {
+    return $false
+  } finally {
+    Remove-Item $errFile -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Update-RmSecretsHost([string]$newHost) {
+  $secPath = Join-Path $RepoRoot "conf\install.secrets"
+  if (-not (Test-Path $secPath)) { return }
+  $lines = @(Get-Content $secPath)
+  $found = $false
+  $newLines = foreach ($line in $lines) {
+    if ($line -match '^HOST=') { $found = $true; "HOST=$newHost" } else { $line }
+  }
+  if (-not $found) { $newLines = @("HOST=$newHost") + $newLines }
+  $newLines | Set-Content -Encoding utf8 $secPath
+}
+
+function Update-RmSecretsPassword([string]$newPassword) {
+  $secPath = Join-Path $RepoRoot "conf\install.secrets"
+  if (-not (Test-Path $secPath)) { return }
+  $lines = @(Get-Content $secPath)
+  $found = $false
+  $newLines = foreach ($line in $lines) {
+    if ($line -match '^SSH_PASSWORD=') { $found = $true; "SSH_PASSWORD=$newPassword" } else { $line }
+  }
+  if (-not $found) { $newLines = @("SSH_PASSWORD=$newPassword") + $newLines }
+  $newLines | Set-Content -Encoding utf8 $secPath
+}
+
+function Show-RmSshRecoveryMenu {
+  Write-Host ""
+  Write-Host "SSH connection failed. What do you want to do?"
+  Write-Host "  1) Check USB / enable USB networking / plug in tablet, then retry  [default]"
+  Write-Host "  2) Enter the tablet Wi-Fi IP address / change HOST and retry"
+  Write-Host "  3) Re-enter SSH password (password changes after factory reset)"
+  Write-Host "  4) Abort"
+  $choice = Ask "Choice" "1"
+  if ($choice -eq "4" -or $choice -match '^(?i)a(bort)?$') {
+    throw "Aborted: could not SSH to tablet at $HostName"
+  }
+  if ($choice -eq "2" -or $choice -match '^(?i)w') {
+    $newIp = (Ask "Tablet Wi-Fi IP").Trim()
+    if ([string]::IsNullOrWhiteSpace($newIp)) {
+      Warn "No IP entered - keeping $HostName"
+    } else {
+      $script:HostName = $newIp
+      Update-RmSecretsHost $script:HostName
+      Info "Updated target ${User}@${script:HostName}"
+    }
+  } elseif ($choice -eq "3" -or $choice -match '^(?i)p') {
+    $script:sshPassword = AskSecret "reMarkable SSH password"
+    Update-RmSecretsPassword $script:sshPassword
+    Ok "Updated stored SSH password"
+  } else {
+    Write-Host "Plug in the tablet, unlock it, and enable USB networking if needed; then retry."
+    $null = Ask "Press Enter to retry USB/default host ($HostName)"
+  }
+}
+
+function Find-GitBash {
+  $candidates = @(
+    (Join-Path ${env:ProgramFiles} "Git\bin\bash.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "Git\bin\bash.exe"),
+    (Join-Path $env:LOCALAPPDATA "Programs\Git\bin\bash.exe")
+  )
+  foreach ($c in $candidates) {
+    if ($c -and (Test-Path $c)) { return $c }
+  }
+  return $null
+}
+
+function Ensure-RmSshKey([string]$password) {
+  if (Test-RmKeyAuth) {
+    Ok "SSH key auth already works"
+    return
+  }
+  if ([string]::IsNullOrEmpty($password)) {
+    throw "SSH key auth failed and no SSH password was provided. Enter the reMarkable SSH password so the installer can install your PC key."
+  }
+
+  $helper = Join-Path $RepoRoot "scripts\ensure-rm-ssh-key.sh"
+  if (-not (Test-Path $helper)) { throw "missing $helper" }
+
+  # Prefer Git Bash (NOT WSL). Pass password via env to the bash helper.
+  $gitBash = Find-GitBash
+  if ($gitBash) {
+    Info "Installing PC SSH key on tablet via Git Bash (password once)..."
+    $env:RM_SSH_PASSWORD = $password
+    try {
+      & $gitBash $helper "${User}@${HostName}"
+      if ($LASTEXITCODE -ne 0) { throw "ensure-rm-ssh-key.sh failed ($LASTEXITCODE)" }
+    } finally {
+      Remove-Item Env:RM_SSH_PASSWORD -ErrorAction SilentlyContinue
+    }
+  } else {
+    # Native OpenSSH ASKPASS fallback (no Python, no WSL, no Git Bash)
+    Info "Git Bash not found - using OpenSSH ASKPASS to install key..."
+    $sshDir = Join-Path $env:USERPROFILE ".ssh"
+    New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+    $pub = Join-Path $sshDir "id_ed25519.pub"
+    if (-not (Test-Path $pub)) {
+      $rsa = Join-Path $sshDir "id_rsa.pub"
+      if (Test-Path $rsa) { $pub = $rsa }
+      else {
+        $priv = Join-Path $sshDir "id_ed25519"
+        & ssh-keygen -t ed25519 -N '""' -f $priv -C "rm2-installer" | Out-Null
+      }
+    }
+    $pubkey = (Get-Content $pub -Raw).Trim()
+    $ask = Join-Path $env:TEMP ("rm-askpass-{0}.cmd" -f [guid]::NewGuid().ToString("n"))
+    # cmd askpass: echo password with care for special chars via delayed env
+    $pwFile = Join-Path $env:TEMP ("rm-ssh-pw-{0}.txt" -f [guid]::NewGuid().ToString("n"))
+    [IO.File]::WriteAllText($pwFile, $password)
+    @"
+@echo off
+type "$pwFile"
+"@ | Set-Content -Encoding ascii $ask
+    $prevAsk = $env:SSH_ASKPASS
+    $prevReq = $env:SSH_ASKPASS_REQUIRE
+    $prevDisp = $env:DISPLAY
+    $env:SSH_ASKPASS = $ask
+    $env:SSH_ASKPASS_REQUIRE = "force"
+    $env:DISPLAY = "ignored"
+    try {
+      $pubEsc = $pubkey.Replace("'", "'\''")
+      $remote = "mkdir -p /home/root/.ssh && chmod 700 /home/root/.ssh && touch /home/root/.ssh/authorized_keys && chmod 600 /home/root/.ssh/authorized_keys && grep -Fqx '$pubEsc' /home/root/.ssh/authorized_keys 2>/dev/null || echo '$pubEsc' >> /home/root/.ssh/authorized_keys && echo installed"
+      # Force password path for this one connection
+      $null = & ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 "${User}@${HostName}" $remote 2>&1
+      if ($LASTEXITCODE -ne 0) { throw "ASKPASS key install failed ($LASTEXITCODE). Install Git for Windows (Git Bash) and re-run." }
+    } finally {
+      if ($null -eq $prevAsk) { Remove-Item Env:SSH_ASKPASS -ErrorAction SilentlyContinue } else { $env:SSH_ASKPASS = $prevAsk }
+      if ($null -eq $prevReq) { Remove-Item Env:SSH_ASKPASS_REQUIRE -ErrorAction SilentlyContinue } else { $env:SSH_ASKPASS_REQUIRE = $prevReq }
+      if ($null -eq $prevDisp) { Remove-Item Env:DISPLAY -ErrorAction SilentlyContinue } else { $env:DISPLAY = $prevDisp }
+      Remove-Item $ask -Force -ErrorAction SilentlyContinue
+      Remove-Item $pwFile -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+  if (-not (Test-RmKeyAuth)) {
+    throw "SSH key install attempted but BatchMode auth still fails"
+  }
+  Ok "SSH key installed - password not needed for the rest of this install"
+}
+
+function Wait-RmSshReady {
+  while ($true) {
+    Info "Probing SSH to ${User}@${HostName}..."
+    if (-not (Test-RmSshHostReachable)) {
+      Warn "Cannot reach reMarkable over SSH at ${User}@${HostName}."
+      if ($NonInteractive) {
+        throw "SSH to ${User}@${HostName} failed (NonInteractive). Enable USB networking (plug in the tablet; default 10.11.99.1) or set -HostName / HOST to the tablet Wi-Fi IP, then re-run."
+      }
+      Show-RmSshRecoveryMenu
+      continue
+    }
+    Ok "SSH host reachable at $HostName"
+
+    Info "Ensuring SSH key auth (password used at most once per success)..."
+    try {
+      Ensure-RmSshKey $script:sshPassword
+      if (Test-RmKeyAuth) {
+        Ok "SSH ready at ${User}@${HostName}"
+        return
+      }
+      Warn "SSH key auth still failing after key bootstrap."
+    } catch {
+      Warn "SSH auth/key install failed: $($_.Exception.Message)"
+    }
+    if ($NonInteractive) {
+      throw "SSH auth to ${User}@${HostName} failed (NonInteractive). Fix SSH password / HOST and re-run."
+    }
+    Show-RmSshRecoveryMenu
+  }
+}
+
 if (-not $RepoRoot) { $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..") }
 $RepoRoot = (Resolve-Path $RepoRoot).Path
 Info "Repo: $RepoRoot"
@@ -121,13 +315,19 @@ Info "Collecting credentials (all of them, before any long step)"
 
 $sshPassword = $sec["SSH_PASSWORD"]
 if (-not $sshPassword) {
-  # Empty allowed only if key auth already works (checked later)
+  # Empty allowed only if key auth already works (checked immediately below)
   if (-not $NonInteractive) {
     $sshPassword = AskSecret "reMarkable SSH password (blank if key auth already works)"
   } else {
     $sshPassword = ""
   }
 }
+$script:sshPassword = $sshPassword
+
+# Early SSH check (before long credential / download / deploy steps)
+Info "Checking SSH now (before long install steps)..."
+Wait-RmSshReady
+$sshPassword = $script:sshPassword
 
 $lang = if ($sec["LANG"]) { $sec["LANG"] } else { "en_US" }
 
@@ -426,163 +626,6 @@ $answerLines = New-Object System.Collections.Generic.List[string]
 # so we always prepend overwrite answer; if no config, that first line becomes the choice
 # and breaks. Probe remote after SSH instead.
 
-function Test-RmKeyAuth {
-  $out = & ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new "${User}@${HostName}" "echo ok" 2>$null
-  return ($LASTEXITCODE -eq 0 -and ("$out".Trim() -eq "ok"))
-}
-
-function Test-RmSshHostReachable {
-  # Reachable if key auth works OR the SSH daemon answers with an auth failure.
-  $errFile = Join-Path $env:TEMP ("rm-ssh-probe-{0}.txt" -f [guid]::NewGuid().ToString("n"))
-  try {
-    $out = & ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -o NumberOfPasswordPrompts=0 "${User}@${HostName}" "echo ok" 2>$errFile
-    if ($LASTEXITCODE -eq 0 -and ("$out".Trim() -eq "ok")) { return $true }
-    $err = ""
-    if (Test-Path $errFile) { $err = (Get-Content $errFile -Raw -ErrorAction SilentlyContinue) }
-    if ($err -match '(?i)Permission denied|Authentication failed|Too many authentication|Host key verification failed') {
-      return $true
-    }
-    return $false
-  } catch {
-    return $false
-  } finally {
-    Remove-Item $errFile -Force -ErrorAction SilentlyContinue
-  }
-}
-
-function Update-RmSecretsHost([string]$newHost) {
-  $secPath = Join-Path $RepoRoot "conf\install.secrets"
-  if (-not (Test-Path $secPath)) { return }
-  $lines = @(Get-Content $secPath)
-  $found = $false
-  $newLines = foreach ($line in $lines) {
-    if ($line -match '^HOST=') { $found = $true; "HOST=$newHost" } else { $line }
-  }
-  if (-not $found) { $newLines = @("HOST=$newHost") + $newLines }
-  $newLines | Set-Content -Encoding utf8 $secPath
-}
-
-function Wait-RmSshHost {
-  while ($true) {
-    Info "Probing SSH to ${User}@${HostName}..."
-    if (Test-RmSshHostReachable) {
-      Ok "SSH host reachable at $HostName"
-      return
-    }
-    Warn "Cannot reach reMarkable over SSH at ${User}@${HostName}."
-    if ($NonInteractive) {
-      throw "SSH to ${User}@${HostName} failed (NonInteractive). Enable USB networking (plug in the tablet; default 10.11.99.1) or set -HostName / HOST to the tablet Wi-Fi IP, then re-run."
-    }
-    Write-Host ""
-    Write-Host "SSH connection failed. What do you want to do?"
-    Write-Host "  1) Check USB / enable USB networking / plug in tablet, then retry  [default]"
-    Write-Host "  2) Enter the tablet Wi-Fi IP address and retry with that host"
-    Write-Host "  3) Abort"
-    $choice = Ask "Choice" "1"
-    if ($choice -eq "3" -or $choice -match '^(?i)a(bort)?$') {
-      throw "Aborted: could not SSH to tablet at $HostName"
-    }
-    if ($choice -eq "2" -or $choice -match '^(?i)w') {
-      $newIp = (Ask "Tablet Wi-Fi IP").Trim()
-      if ([string]::IsNullOrWhiteSpace($newIp)) {
-        Warn "No IP entered - keeping $HostName"
-      } else {
-        $script:HostName = $newIp
-        Update-RmSecretsHost $script:HostName
-        Info "Updated target ${User}@${script:HostName}"
-      }
-    } else {
-      Write-Host "Plug in the tablet, unlock it, and enable USB networking if needed; then retry."
-      $null = Ask "Press Enter to retry USB/default host ($HostName)"
-    }
-  }
-}
-
-function Find-GitBash {
-  $candidates = @(
-    (Join-Path ${env:ProgramFiles} "Git\bin\bash.exe"),
-    (Join-Path ${env:ProgramFiles(x86)} "Git\bin\bash.exe"),
-    (Join-Path $env:LOCALAPPDATA "Programs\Git\bin\bash.exe")
-  )
-  foreach ($c in $candidates) {
-    if ($c -and (Test-Path $c)) { return $c }
-  }
-  return $null
-}
-
-function Ensure-RmSshKey([string]$password) {
-  if (Test-RmKeyAuth) {
-    Ok "SSH key auth already works"
-    return
-  }
-  if ([string]::IsNullOrEmpty($password)) {
-    throw "SSH key auth failed and no SSH password was provided. Enter the reMarkable SSH password so the installer can install your PC key."
-  }
-
-  $helper = Join-Path $RepoRoot "scripts\ensure-rm-ssh-key.sh"
-  if (-not (Test-Path $helper)) { throw "missing $helper" }
-
-  # Prefer Git Bash (NOT WSL). Pass password via env to the bash helper.
-  $gitBash = Find-GitBash
-  if ($gitBash) {
-    Info "Installing PC SSH key on tablet via Git Bash (password once)..."
-    $env:RM_SSH_PASSWORD = $password
-    try {
-      & $gitBash $helper "${User}@${HostName}"
-      if ($LASTEXITCODE -ne 0) { throw "ensure-rm-ssh-key.sh failed ($LASTEXITCODE)" }
-    } finally {
-      Remove-Item Env:RM_SSH_PASSWORD -ErrorAction SilentlyContinue
-    }
-  } else {
-    # Native OpenSSH ASKPASS fallback (no Python, no WSL, no Git Bash)
-    Info "Git Bash not found - using OpenSSH ASKPASS to install key..."
-    $sshDir = Join-Path $env:USERPROFILE ".ssh"
-    New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
-    $pub = Join-Path $sshDir "id_ed25519.pub"
-    if (-not (Test-Path $pub)) {
-      $rsa = Join-Path $sshDir "id_rsa.pub"
-      if (Test-Path $rsa) { $pub = $rsa }
-      else {
-        $priv = Join-Path $sshDir "id_ed25519"
-        & ssh-keygen -t ed25519 -N '""' -f $priv -C "rm2-installer" | Out-Null
-      }
-    }
-    $pubkey = (Get-Content $pub -Raw).Trim()
-    $ask = Join-Path $env:TEMP ("rm-askpass-{0}.cmd" -f [guid]::NewGuid().ToString("n"))
-    # cmd askpass: echo password with care for special chars via delayed env
-    $pwFile = Join-Path $env:TEMP ("rm-ssh-pw-{0}.txt" -f [guid]::NewGuid().ToString("n"))
-    [IO.File]::WriteAllText($pwFile, $password)
-    @"
-@echo off
-type "$pwFile"
-"@ | Set-Content -Encoding ascii $ask
-    $prevAsk = $env:SSH_ASKPASS
-    $prevReq = $env:SSH_ASKPASS_REQUIRE
-    $prevDisp = $env:DISPLAY
-    $env:SSH_ASKPASS = $ask
-    $env:SSH_ASKPASS_REQUIRE = "force"
-    $env:DISPLAY = "ignored"
-    try {
-      $pubEsc = $pubkey.Replace("'", "'\''")
-      $remote = "mkdir -p /home/root/.ssh && chmod 700 /home/root/.ssh && touch /home/root/.ssh/authorized_keys && chmod 600 /home/root/.ssh/authorized_keys && grep -Fqx '$pubEsc' /home/root/.ssh/authorized_keys 2>/dev/null || echo '$pubEsc' >> /home/root/.ssh/authorized_keys && echo installed"
-      # Force password path for this one connection
-      $null = & ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 "${User}@${HostName}" $remote 2>&1
-      if ($LASTEXITCODE -ne 0) { throw "ASKPASS key install failed ($LASTEXITCODE). Install Git for Windows (Git Bash) and re-run." }
-    } finally {
-      if ($null -eq $prevAsk) { Remove-Item Env:SSH_ASKPASS -ErrorAction SilentlyContinue } else { $env:SSH_ASKPASS = $prevAsk }
-      if ($null -eq $prevReq) { Remove-Item Env:SSH_ASKPASS_REQUIRE -ErrorAction SilentlyContinue } else { $env:SSH_ASKPASS_REQUIRE = $prevReq }
-      if ($null -eq $prevDisp) { Remove-Item Env:DISPLAY -ErrorAction SilentlyContinue } else { $env:DISPLAY = $prevDisp }
-      Remove-Item $ask -Force -ErrorAction SilentlyContinue
-      Remove-Item $pwFile -Force -ErrorAction SilentlyContinue
-    }
-  }
-
-  if (-not (Test-RmKeyAuth)) {
-    throw "SSH key install attempted but BatchMode auth still fails"
-  }
-  Ok "SSH key installed - password not needed for the rest of this install"
-}
-
 function Invoke-Remote([string]$remoteCmd) {
   $sshArgs = @("-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4", "-o", "StrictHostKeyChecking=accept-new", "${User}@${HostName}", $remoteCmd)
   & ssh @sshArgs
@@ -600,18 +643,15 @@ function Invoke-RemoteCapture([string]$remoteCmd) {
   return ($out | Out-String).Trim()
 }
 
-Info "Ensuring tablet SSH is reachable..."
-Wait-RmSshHost
-
-Info "Ensuring SSH key auth (password used at most once)..."
-Ensure-RmSshKey $sshPassword
-
-Info "Checking SSH..."
+# SSH already verified early (after password); re-check in case HOST/password changed mid-run
+Info "Re-checking SSH before deploy..."
+Wait-RmSshReady
+$sshPassword = $script:sshPassword
 try {
   Invoke-Remote "uname -m"
   Ok "SSH works"
 } catch {
-  Warn "SSH failed after key bootstrap."
+  Warn "SSH failed after earlier bootstrap."
   throw
 }
 
@@ -660,7 +700,7 @@ New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 $dist = Join-Path $distDir "rm2hwr-linux-armv7"
 $releaseTag = $env:RM2_RELEASE_TAG
 if (-not $releaseTag) { $releaseTag = $env:RELEASE_TAG }
-if (-not $releaseTag) { $releaseTag = "v0.3.7" }
+if (-not $releaseTag) { $releaseTag = "v0.3.8" }
 $releaseAssetBase = "https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/$releaseTag"
 
 function Get-ReleaseAssetHttps([string]$Name, [string]$OutFile, [int]$MinSize = 100000) {

@@ -3,14 +3,14 @@
 # then run install-rm2-stack.sh --skip-build.
 #
 # Intended for:
-#   curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.7/scripts/install-from-web.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.8/scripts/install-from-web.sh | bash
 #
 # Defaults (override via env):
-#   RELEASE_TAG / RM2_RELEASE_TAG = v0.3.7
+#   RELEASE_TAG / RM2_RELEASE_TAG = v0.3.8
 #   HOST                           = 10.11.99.1
 set -euo pipefail
 
-RELEASE_TAG="${RELEASE_TAG:-${RM2_RELEASE_TAG:-v0.3.7}}"
+RELEASE_TAG="${RELEASE_TAG:-${RM2_RELEASE_TAG:-v0.3.8}}"
 HOST="${HOST:-10.11.99.1}"
 REPO_OWNER="schraederbr"
 REPO_NAME="RemarkableMyscriptLocal"
@@ -36,13 +36,14 @@ echo "  1) USB cable to the reMarkable 2 (default host ${HOST})"
 echo "     Or set env HOST=<tablet-wifi-ip> before running."
 echo "  2) reMarkable SSH password (Settings -> Help -> Copyrights and licenses)"
 echo "  3) Joplin upload mode choice: SVG only / handwriting text / both"
-echo "  4) MyScript APP_KEY (HMAC optional) — only if you want handwriting text (text or both)"
+echo "  4) MyScript APP_KEY (HMAC optional) - only if you want handwriting text (text or both)"
 echo "  5) Joplin Cloud email + password"
 echo "  6) Tablet Wi-Fi ON with internet (Joplin Cloud; MyScript only if text/HWR)"
 echo
 echo "This script downloads release source + assets over HTTPS,"
 echo "then runs install-rm2-stack.sh --skip-build so Go is not required."
 echo
+echo "If SSH fails, the stack installer prompts to enable USB, enter a Wi-Fi IP / change HOST, re-enter the SSH password, or abort."
 echo "Works on Linux and macOS (bash + curl/wget + ssh/scp)."
 echo
 
