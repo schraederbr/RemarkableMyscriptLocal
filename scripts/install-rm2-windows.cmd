@@ -1,12 +1,12 @@
 @echo off
 setlocal
-REM Double-clickable Windows bootstrap for RemarkableMyscriptLocal v0.3.7
-title RemarkableMyscriptLocal v0.3.7 installer
+REM Double-clickable Windows bootstrap for RemarkableMyscriptLocal v0.3.8
+title RemarkableMyscriptLocal v0.3.8 installer
 echo ============================================================
-echo  RemarkableMyscriptLocal one-liner install (v0.3.7)
+echo  RemarkableMyscriptLocal one-liner install (v0.3.8)
 echo ============================================================
 echo.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.7/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.8/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f"
 set ERR=%ERRORLEVEL%
 echo.
 if not "%ERR%"=="0" (

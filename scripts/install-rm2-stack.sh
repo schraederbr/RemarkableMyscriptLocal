@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Linux/macOS host installer for rm2hwr + jonobones on reMarkable 2.
 # Collects credentials up front (upload mode, MyScript if needed, Joplin),
-# verifies Joplin Cloud login early, recovers from SSH failures (USB / Wi-Fi IP),
+# verifies Joplin Cloud login early, recovers from SSH failures (USB / Wi-Fi IP / re-enter password),
 # deploys under nohup, and prints heartbeats.
 #
 # Usage:
@@ -108,6 +108,127 @@ json_payload() {
 }
 
 SECRETS="$ROOT/conf/install.secrets"
+
+ssh_reachable() {
+  local err
+  err=$(mktemp)
+  if ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new \
+      -o NumberOfPasswordPrompts=0 "${USER_NAME}@${HOST}" "echo ok" 2>"$err" | grep -qx ok; then
+    rm -f "$err"; return 0
+  fi
+  if grep -Eiq 'Permission denied|Authentication failed|Too many authentication|Host key verification failed' "$err"; then
+    rm -f "$err"; return 0
+  fi
+  rm -f "$err"; return 1
+}
+
+ssh_key_auth_ok() {
+  ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new \
+    "${USER_NAME}@${HOST}" "echo ok" 2>/dev/null | grep -qx ok
+}
+
+update_secrets_host() {
+  local newhost="$1"
+  [[ -f "$SECRETS" ]] || return 0
+  local tmp
+  tmp=$(mktemp)
+  if grep -q '^HOST=' "$SECRETS"; then
+    sed "s/^HOST=.*/HOST=$newhost/" "$SECRETS" >"$tmp" && mv "$tmp" "$SECRETS"
+  else
+    echo "HOST=$newhost" | cat - "$SECRETS" >"$tmp" && mv "$tmp" "$SECRETS"
+  fi
+}
+
+update_secrets_password() {
+  local newpw="$1"
+  [[ -f "$SECRETS" ]] || return 0
+  local tmp
+  tmp=$(mktemp)
+  if grep -q '^SSH_PASSWORD=' "$SECRETS"; then
+    # Use awk to avoid sed special-char issues in passwords
+    awk -v p="$newpw" 'BEGIN{done=0} /^SSH_PASSWORD=/{print "SSH_PASSWORD=" p; done=1; next} {print} END{if(!done) print "SSH_PASSWORD=" p}' "$SECRETS" >"$tmp" && mv "$tmp" "$SECRETS"
+  else
+    echo "SSH_PASSWORD=$newpw" | cat - "$SECRETS" >"$tmp" && mv "$tmp" "$SECRETS"
+  fi
+}
+
+ssh_recovery_menu() {
+  echo
+  echo "SSH connection failed. What do you want to do?"
+  echo "  1) Check USB / enable USB networking / plug in tablet, then retry  [default]"
+  echo "  2) Enter the tablet Wi-Fi IP address / change HOST and retry"
+  echo "  3) Re-enter SSH password (password changes after factory reset)"
+  echo "  4) Abort"
+  local choice newip
+  choice=$(ask "Choice" "1")
+  if [[ "$choice" == "4" || "$choice" == "a" || "$choice" == "abort" ]]; then
+    echo "Aborted: could not SSH to tablet at $HOST" >&2
+    exit 1
+  fi
+  if [[ "$choice" == "2" || "$choice" == "w" ]]; then
+    newip=$(ask "Tablet Wi-Fi IP")
+    if [[ -z "${newip// }" ]]; then
+      warn "No IP entered - keeping $HOST"
+    else
+      HOST="$newip"
+      update_secrets_host "$HOST"
+      info "Updated target ${USER_NAME}@${HOST}"
+    fi
+  elif [[ "$choice" == "3" || "$choice" == "p" ]]; then
+    SSH_PASSWORD=$(ask_secret "reMarkable SSH password")
+    update_secrets_password "$SSH_PASSWORD"
+    ok "Updated stored SSH password"
+  else
+    echo "Plug in the tablet, unlock it, and enable USB networking if needed; then retry."
+    ask "Press Enter to retry USB/default host ($HOST)" "" >/dev/null
+  fi
+}
+
+ensure_ssh_ready() {
+  while true; do
+    info "Probing SSH to ${USER_NAME}@${HOST}..."
+    if ! ssh_reachable; then
+      warn "Cannot reach reMarkable over SSH at ${USER_NAME}@${HOST}."
+      if [[ "$NONINTERACTIVE" == "1" ]]; then
+        echo "ERROR: SSH to ${USER_NAME}@${HOST} failed (NonInteractive). Enable USB networking (default 10.11.99.1) or set HOST to the tablet Wi-Fi IP, then re-run." >&2
+        exit 1
+      fi
+      ssh_recovery_menu
+      continue
+    fi
+    ok "SSH host reachable at $HOST"
+
+    info "Ensuring SSH key auth (password used at most once per success)..."
+    if ssh_key_auth_ok; then
+      ok "SSH key auth already works"
+      ok "SSH ready at ${USER_NAME}@${HOST}"
+      return 0
+    fi
+
+    export RM_SSH_PASSWORD="${SSH_PASSWORD:-}"
+    if [[ -n "${RM_SSH_PASSWORD:-}" ]]; then
+      if "$ROOT/scripts/ensure-rm-ssh-key.sh" "${USER_NAME}@${HOST}"; then
+        if ssh_key_auth_ok; then
+          ok "SSH ready at ${USER_NAME}@${HOST}"
+          return 0
+        fi
+        warn "SSH key install attempted but BatchMode auth still fails"
+      else
+        warn "SSH auth/key install failed (ensure-rm-ssh-key.sh)"
+      fi
+    else
+      warn "SSH key auth failed and no SSH password was provided"
+    fi
+
+    if [[ "$NONINTERACTIVE" == "1" ]]; then
+      echo "ERROR: SSH auth to ${USER_NAME}@${HOST} failed (NonInteractive). Fix SSH password / HOST and re-run." >&2
+      exit 1
+    fi
+    ssh_recovery_menu
+  done
+}
+
+
 HWR_ENV="$ROOT/conf/hwr.env"
 ANSWERS="$ROOT/conf/jonobones-init-answers.txt"
 
@@ -167,6 +288,10 @@ if [[ -z "$SSH_PASSWORD" && "$NONINTERACTIVE" != "1" ]]; then
   SSH_PASSWORD=$(ask_secret "reMarkable SSH password (blank if key auth already works)")
 fi
 
+# Early SSH check (before long credential / download / deploy steps)
+info "Checking SSH now (before long install steps)..."
+ensure_ssh_ready
+
 # Upload mode first
 UPLOAD_MODE=$(printf '%s' "$UPLOAD_MODE" | tr '[:upper:]' '[:lower:]')
 if [[ "$UPLOAD_MODE" != "text" && "$UPLOAD_MODE" != "svg" && "$UPLOAD_MODE" != "both" ]]; then
@@ -175,8 +300,8 @@ if [[ "$UPLOAD_MODE" != "text" && "$UPLOAD_MODE" != "svg" && "$UPLOAD_MODE" != "
   else
     echo
     echo "What should rm2hwr upload to Joplin?"
-    echo "  1) Handwriting text only (MyScript HWR — needs APP_KEY)"
-    echo "  2) SVG only (page images — no MyScript keys)"
+    echo "  1) Handwriting text only (MyScript HWR - needs APP_KEY)"
+    echo "  2) SVG only (page images - no MyScript keys)"
     echo "  3) Both text and SVG  [default]"
     um=$(ask "Choice" "3")
     case "$um" in
@@ -378,79 +503,11 @@ SYNC_INTERVAL_HOURS=$SYNC_INTERVAL_HOURS
 EOF
 ok "Saved conf/install.secrets + conf/hwr.env (gitignored)"
 
-ssh_reachable() {
-  local err
-  err=$(mktemp)
-  if ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new \
-      -o NumberOfPasswordPrompts=0 "${USER_NAME}@${HOST}" "echo ok" 2>"$err" | grep -qx ok; then
-    rm -f "$err"; return 0
-  fi
-  if grep -Eiq 'Permission denied|Authentication failed|Too many authentication|Host key verification failed' "$err"; then
-    rm -f "$err"; return 0
-  fi
-  rm -f "$err"; return 1
-}
-
-wait_ssh_host() {
-  while true; do
-    info "Probing SSH to ${USER_NAME}@${HOST}..."
-    if ssh_reachable; then
-      ok "SSH host reachable at $HOST"
-      return 0
-    fi
-    warn "Cannot reach reMarkable over SSH at ${USER_NAME}@${HOST}."
-    if [[ "$NONINTERACTIVE" == "1" ]]; then
-      echo "ERROR: SSH to ${USER_NAME}@${HOST} failed (NonInteractive). Enable USB networking (default 10.11.99.1) or set HOST to the tablet Wi-Fi IP, then re-run." >&2
-      exit 1
-    fi
-    echo
-    echo "SSH connection failed. What do you want to do?"
-    echo "  1) Check USB / enable USB networking / plug in tablet, then retry  [default]"
-    echo "  2) Enter the tablet Wi-Fi IP address and retry with that host"
-    echo "  3) Abort"
-    choice=$(ask "Choice" "1")
-    if [[ "$choice" == "3" || "$choice" == "a" || "$choice" == "abort" ]]; then
-      echo "Aborted: could not SSH to tablet at $HOST" >&2
-      exit 1
-    fi
-    if [[ "$choice" == "2" || "$choice" == "w" ]]; then
-      newip=$(ask "Tablet Wi-Fi IP")
-      if [[ -z "${newip// }" ]]; then
-        warn "No IP entered - keeping $HOST"
-      else
-        HOST="$newip"
-        # update secrets HOST=
-        if [[ -f "$SECRETS" ]]; then
-          tmp=$(mktemp)
-          if grep -q '^HOST=' "$SECRETS"; then
-            sed "s/^HOST=.*/HOST=$HOST/" "$SECRETS" >"$tmp" && mv "$tmp" "$SECRETS"
-          else
-            echo "HOST=$HOST" | cat - "$SECRETS" >"$tmp" && mv "$tmp" "$SECRETS"
-          fi
-        fi
-        info "Updated target ${USER_NAME}@${HOST}"
-      fi
-    else
-      echo "Plug in the tablet, unlock it, and enable USB networking if needed; then retry."
-      ask "Press Enter to retry USB/default host ($HOST)" "" >/dev/null
-    fi
-  done
-}
-
-info "Ensuring tablet SSH is reachable..."
-wait_ssh_host
-
-export RM_SSH_PASSWORD="${SSH_PASSWORD:-}"
-if [[ -n "${RM_SSH_PASSWORD:-}" ]]; then
-  info "Ensuring SSH key auth (password used at most once)..."
-  "$ROOT/scripts/ensure-rm-ssh-key.sh" "${USER_NAME}@${HOST}"
-else
-  info "No SSH password — assuming key auth already works"
-fi
-
-info "Checking SSH..."
-ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${USER_NAME}@${HOST}" "uname -m" >/dev/null
+# SSH already verified early (after password); re-check before deploy
+info "Re-checking SSH before deploy..."
+ensure_ssh_ready
 ok "SSH works"
+
 
 ARCH=$(ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${USER_NAME}@${HOST}" "uname -m")
 if [[ "$ARCH" != "armv7l" ]]; then
@@ -508,7 +565,7 @@ fi
 
 # Binary: prefer dist, else HTTPS release
 DIST="$ROOT/dist/rm2hwr-linux-armv7"
-RELEASE_TAG="${RM2_RELEASE_TAG:-${RELEASE_TAG:-v0.3.7}}"
+RELEASE_TAG="${RM2_RELEASE_TAG:-${RELEASE_TAG:-v0.3.8}}"
 RELEASE_BASE="https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/${RELEASE_TAG}"
 if [[ -f "$DIST" && $(wc -c <"$DIST") -gt 100000 ]]; then
   ok "Using existing binary $DIST"
@@ -526,7 +583,7 @@ else
     info "Building rm2hwr for armv7..."
     (cd "$ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags '-s -w' -o "$DIST" ./cmd/rm2hwr)
   else
-    info "Go not found — downloading release binary $RELEASE_TAG"
+    info "Go not found - downloading release binary $RELEASE_TAG"
     mkdir -p "$ROOT/dist"
     curl -fsSL -o "$DIST" "$RELEASE_BASE/rm2hwr-linux-armv7"
   fi
@@ -604,7 +661,7 @@ rm -f /tmp/hwr-sync-recent.service /tmp/hwr-sync-recent.timer
 TIMER
 
 info "Starting on-device install job under nohup (survives SSH drop)..."
-echo "==> Job running on tablet. Heartbeat every ~60s (Ctrl+C here is safe — job keeps running)."
+echo "==> Job running on tablet. Heartbeat every ~60s (Ctrl+C here is safe - job keeps running)."
 deadline=$((SECONDS + 6*3600))
 last_hb=0
 phase=pending
@@ -612,7 +669,7 @@ while (( SECONDS < deadline )); do
   sleep 5
   st=$(ssh -o ConnectTimeout=10 -o BatchMode=yes "${USER_NAME}@${HOST}" 'cat /tmp/rm2-install.status 2>/dev/null || echo phase=pending' || true)
   if [[ -z "$st" ]]; then
-    echo "!!  SSH blip while polling — retrying (on-device job still running)"
+    echo "!!  SSH blip while polling - retrying (on-device job still running)"
     continue
   fi
   if [[ "$st" == phase=* ]]; then
@@ -629,7 +686,7 @@ while (( SECONDS < deadline )); do
     break
   fi
   if [[ "$phase" == "fail" ]]; then
-    warn "On-device job failed — last log lines:"
+    warn "On-device job failed - last log lines:"
     ssh "${USER_NAME}@${HOST}" 'tail -n 40 /tmp/rm2-install.log' || true
     exit 1
   fi

@@ -1,10 +1,10 @@
 # One-liner Windows bootstrap: download RemarkableMyscriptLocal release + assets, then run install-rm2-stack.ps1.
 #
 # Intended for (download then -File; never irm|iex):
-#   powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.7/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell -NoProfile -ExecutionPolicy Bypass -File $f"
+#   powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.8/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell -NoProfile -ExecutionPolicy Bypass -File $f"
 #
 # Defaults (override via env):
-#   RELEASE_TAG / RM2_RELEASE_TAG = v0.3.7
+#   RELEASE_TAG / RM2_RELEASE_TAG = v0.3.8
 #   HOST                           = 10.11.99.1
 #
 # Prerequisites (printed up front):
@@ -22,7 +22,7 @@ function Warn($msg) { Write-Host "!!  $msg" -ForegroundColor Yellow }
 
 $ReleaseTag = $env:RELEASE_TAG
 if (-not $ReleaseTag) { $ReleaseTag = $env:RM2_RELEASE_TAG }
-if (-not $ReleaseTag) { $ReleaseTag = "v0.3.7" }
+if (-not $ReleaseTag) { $ReleaseTag = "v0.3.8" }
 
 $HostName = $env:HOST
 if (-not $HostName) { $HostName = "10.11.99.1" }
@@ -53,7 +53,7 @@ Write-Host "  6) Tablet Wi-Fi ON with internet (Joplin Cloud; MyScript only if t
 Write-Host ""
 Write-Host "This script downloads release source + assets over HTTPS (no gh CLI required),"
 Write-Host "then runs install-rm2-stack.ps1 -SkipBuild so Go is not required."
-Write-Host "If SSH fails, the stack installer prompts to enable USB or enter a Wi-Fi IP."
+Write-Host "If SSH fails, the stack installer prompts to enable USB, enter a Wi-Fi IP / change HOST, re-enter the SSH password, or abort."
 Write-Host "Joplin Cloud email/password are verified against api.joplincloud.com before the long install."
 Write-Host ""
 

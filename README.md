@@ -6,13 +6,13 @@ Turn reMarkable 2 notebooks into **Joplin notes that sync with Joplin Cloud** (o
 
 ### Download and double-click (no paste required)
 
-From the [**v0.3.7** release](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/tag/v0.3.7):
+From the [**v0.3.8** release](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/tag/v0.3.8):
 
 | OS | Asset | How |
 |----|-------|-----|
-| **Windows** | [`install-rm2-windows.exe`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.7/install-rm2-windows.exe) | Double-click (console stays open for prompts). Fallback: [`install-rm2-windows.cmd`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.7/install-rm2-windows.cmd) |
-| **Linux** | [`install-rm2-linux`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.7/install-rm2-linux) | `chmod +x install-rm2-linux && ./install-rm2-linux` (or double-click from a file manager that runs executables in a terminal) |
-| **macOS** | [`install-rm2-macos.command`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.7/install-rm2-macos.command) | Double-click (opens Terminal). First time: right-click → Open if Gatekeeper blocks |
+| **Windows** | [`install-rm2-windows.exe`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.8/install-rm2-windows.exe) | Double-click (console stays open for prompts). Fallback: [`install-rm2-windows.cmd`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.8/install-rm2-windows.cmd) |
+| **Linux** | [`install-rm2-linux`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.8/install-rm2-linux) | `chmod +x install-rm2-linux && ./install-rm2-linux` (or double-click from a file manager that runs executables in a terminal) |
+| **macOS** | [`install-rm2-macos.command`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.8/install-rm2-macos.command) | Double-click (opens Terminal). First time: right-click → Open if Gatekeeper blocks |
 
 SmartScreen / Gatekeeper may warn on first run — that is normal for unsigned downloadable installers.
 
@@ -21,18 +21,18 @@ SmartScreen / Gatekeeper may warn on first run — that is normal for unsigned d
 **Windows** (USB `10.11.99.1` by default — no local clone or Go required):
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.7/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell -NoProfile -ExecutionPolicy Bypass -File $f"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.8/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell -NoProfile -ExecutionPolicy Bypass -File $f"
 ```
 
 **Linux / macOS** (bash + curl + OpenSSH):
 
 ```
-curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.7/scripts/install-from-web.sh | bash
+curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.8/scripts/install-from-web.sh | bash
 ```
 
-Downloads the **`v0.3.7`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
+Downloads the **`v0.3.8`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
 
-**v0.3.7** includes: **Windows installer fix** - `irm|iex` failed on comment lines like `    - USB cable` (unary minus). All `scripts/*.ps1` are ASCII-only (no BOM / no bytes >127); comment bullets are `# - item`. Windows one-liner and `install-rm2-windows.exe`/`.cmd` download via `Invoke-WebRequest -OutFile` then `powershell -File` (never `irm|iex`). **Use v0.3.7+ for the Windows installer**. Also carries forward v0.3.7 ASCII string fix; v0.3.5 jonobones first-sync warning + SSH password find-it; v0.3.4 quick-install-first README and **no duplicate H1** (#16); v0.3.3 installer UX.
+**v0.3.8** includes: **SSH fail recovery** - early SSH check right after the tablet password (before long download/deploy steps); on failure the menu offers retry USB, change Wi-Fi IP / HOST, **re-enter SSH password**, or abort (password changes after factory reset). Also carries forward v0.3.7 Windows `irm|iex` / OutFile+-File fix; v0.3.6 ASCII PS1 parse fix; v0.3.5 jonobones first-sync warning + SSH password find-it; v0.3.4 quick-install-first README / no-duplicate H1 (#16); v0.3.3 installer UX.
 
 From a local clone (optional):
 
@@ -48,7 +48,7 @@ cd RemarkableMyscriptLocal
 
 Have ready (see [docs/install-checklist.md](docs/install-checklist.md)):
 
-- **USB cable** (or set `HOST` to the tablet Wi-Fi IP). If SSH to `10.11.99.1` fails, the installer prompts to enable USB networking **or** enter a Wi-Fi IP and retry.
+- **USB cable** (or set `HOST` to the tablet Wi-Fi IP). If SSH fails, the installer prompts to enable USB networking, enter a Wi-Fi IP / change `HOST`, **re-enter the SSH password** (password changes after factory reset), or abort - without restarting the whole installer.
 - reMarkable **root SSH password** (installer installs your PC SSH key once — no manual key setup):
   - **RM2 / classic:** Settings → Help → About → **Copyrights and licenses** → password listed under **GPLv3 compliance** (username `root`)
   - **Paper Pro / developer mode:** follow [Developer mode](https://support.remarkable.com/s/article/Developer-mode) (enable developer mode, then reveal the SSH password)
@@ -62,7 +62,7 @@ Have ready (see [docs/install-checklist.md](docs/install-checklist.md)):
 - Optional E2EE master password
 - **Tablet on Wi-Fi with internet**
 
-The installer collects credentials up front, verifies Joplin Cloud login early, deploys `rm2hwr` + Node/jonobones/sqlite, runs the long steps under `nohup` (survives dropped SSH), and scripted `jonobones init` + start.
+The installer collects the tablet SSH password up front, **checks SSH immediately** (recovery menu includes re-entering the password), verifies Joplin Cloud login early, deploys `rm2hwr` + Node/jonobones/sqlite, runs the long steps under `nohup` (survives dropped SSH), and scripted `jonobones init` + start.
 
 > **First jonobones ↔ Joplin Cloud sync may take a long time.** Large vaults or many attachments often need **tens of minutes or more**. Keep the tablet on Wi-Fi; **do not unplug** and **do not assume the install failed** while jonobones is still syncing. Check `/tmp/jonobones-start.log` and the install heartbeat (`du` of the jonobones profile) if you are unsure.
 
