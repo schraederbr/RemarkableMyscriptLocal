@@ -30,7 +30,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-f
 curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.8/scripts/install-from-web.sh | bash
 ```
 
-Downloads the **`v0.3.8`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
+Downloads the **`v0.3.8`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `libatomic.so.1`, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
 
 **v0.3.8** includes: **SSH fail recovery** - early SSH check right after the tablet password (before long download/deploy steps); on failure the menu offers retry USB, change Wi-Fi IP / HOST, **re-enter SSH password**, or abort (password changes after factory reset). Also carries forward v0.3.7 Windows `irm|iex` / OutFile+-File fix; v0.3.6 ASCII PS1 parse fix; v0.3.5 jonobones first-sync warning + SSH password find-it; v0.3.4 quick-install-first README / no-duplicate H1 (#16); v0.3.3 installer UX.
 
@@ -112,6 +112,7 @@ Handoff / replace markers / systemd timer: [docs/joplin-sync.md](docs/joplin-syn
 |-------|------|
 | `rm2hwr` | Parse `.rm` (v5 + v6 auto-detect), MyScript HWR and/or SVG, write `out/<uuid>/` |
 | Node 20 + jonobones | Local Joplin vault + **direct sync** to Joplin Cloud/Server/WebDAV |
+| `libatomic.so.1` | Bundled ARMHF runtime needed by Node on newer Codex Linux firmware |
 | Revcord `node_sqlite3.node` | ARMv7 sqlite binding (vendored in `third_party/revcord/`) |
 | `joplin-upsert.js` | Sync-pull → title-match upsert → sync-push (`127.0.0.1:26637`) |
 

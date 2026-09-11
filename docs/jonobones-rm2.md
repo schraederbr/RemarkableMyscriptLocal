@@ -8,6 +8,7 @@ Headless Joplin-sync daemon on RM2 (armv7l, glibc, hard-float). Stay on firmware
 |-------|--------|
 | Device | RM2, `uname -m` = `armv7l`, firmware ~2.15, glibc 2.31 |
 | Node | **20.x linux-armv7l** under `/home/root/opt/node` (Fastify 5 floor; ignore `engines: >=24`) |
+| Node runtime | Bundled ARMHF `libatomic.so.1` under `/home/root/hwr/lib` for newer Codex Linux firmware |
 | jonobones | `0.1.5` global npm, `--ignore-scripts --ignore-engines` |
 | sqlite3 | `5.1.6` N-API v6 — Revcord v1.2 unofficial `node_sqlite3.node` |
 | Binding path | `…/sqlite3/lib/binding/napi-v6-linux-glibc-arm/node_sqlite3.node` |

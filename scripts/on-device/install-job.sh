@@ -24,6 +24,7 @@ rm2_phase starting
 exec >>"$LOG" 2>&1
 
 export PATH=/home/root/.npm-global/bin:/home/root/opt/node/bin:$PATH
+export LD_LIBRARY_PATH=/home/root/hwr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 mkdir -p "$HWR/conf" "$HWR/bin" "$HWR/scripts" "$HWR/out" "$HWR/state" "$HWR/third_party/revcord"
 chmod +x "$HWR/scripts/"*.sh 2>/dev/null || true
 

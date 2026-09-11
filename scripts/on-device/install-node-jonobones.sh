@@ -17,7 +17,10 @@ OPT=/home/root/opt
 NPM_PREFIX=/home/root/.npm-global
 DOWNLOADS=/home/root/downloads
 HWR=/home/root/hwr
+LIB_DIR=$HWR/lib
 USED_OFFLINE=0
+
+export LD_LIBRARY_PATH="$LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 echo "==> identity"
 uname -m
@@ -49,6 +52,8 @@ fi
 export PATH="$NPM_PREFIX/bin:$OPT/node/bin:$PATH"
 grep -q '/home/root/opt/node/bin' /home/root/.profile 2>/dev/null || \
   echo 'export PATH=/home/root/.npm-global/bin:/home/root/opt/node/bin:$PATH' >> /home/root/.profile
+grep -q '/home/root/hwr/lib' /home/root/.profile 2>/dev/null || \
+  echo 'export LD_LIBRARY_PATH=/home/root/hwr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}' >> /home/root/.profile
 
 npm config set prefix "$NPM_PREFIX"
 node -p "process.arch+' napi='+process.versions.napi+' '+process.version"

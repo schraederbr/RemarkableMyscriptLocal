@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Environment=PATH=/home/root/.npm-global/bin:/home/root/opt/node/bin:/home/root/hwr/bin:/usr/bin:/bin
+Environment=LD_LIBRARY_PATH=/home/root/hwr/lib
 WorkingDirectory=/home/root/hwr
 ExecStart=/home/root/hwr/scripts/sync-recent.sh
 # Leave journal + script log (/tmp/hwr-sync-recent.log); do not block reboot forever

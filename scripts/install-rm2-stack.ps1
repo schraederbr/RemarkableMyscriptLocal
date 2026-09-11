@@ -56,6 +56,12 @@ function Info($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Ok($msg) { Write-Host "OK  $msg" -ForegroundColor Green }
 function Warn($msg) { Write-Host "!!  $msg" -ForegroundColor Yellow }
 
+function Write-Utf8Lf([string]$path, $content) {
+  $text = if ($content -is [array]) { $content -join "`n" } else { [string]$content }
+  $text = $text.Replace("`r`n", "`n").TrimEnd([char[]]"`r`n") + "`n"
+  [IO.File]::WriteAllText($path, $text, (New-Object Text.UTF8Encoding($false)))
+}
+
 function Read-DotEnv([string]$path) {
   $map = @{}
   if (-not (Test-Path $path)) { return $map }
@@ -604,7 +610,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "conf") | Out-Nul
   "SKIP_JONOBONES_INIT=$(if ($doInit) {'0'} else {'1'})"
   "START_JONOBONES=$(if ($startJb) {'1'} else {'0'})"
 ) | Set-Content -Encoding utf8 $localSecrets
-@(
+$hwrLines = @(
   "APP_KEY=$appKey"
   "HMAC_KEY=$hmacKey"
   "LANG=$lang"
@@ -612,7 +618,8 @@ New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "conf") | Out-Nul
   "API_URL=https://cloud.myscript.com/api/v4.0/iink/batch"
   "UPLOAD_MODE=$uploadMode"
   "SYNC_INTERVAL_HOURS=$syncIntervalHours"
-) | Set-Content -Encoding utf8 $localHwr
+)
+Write-Utf8Lf $localHwr $hwrLines
 Ok "Saved conf/install.secrets + conf/hwr.env (gitignored)"
 
 # Build answers file for jonobones init (line-oriented; see jonobones Prompter)
@@ -689,7 +696,7 @@ if ($doInit) {
   }
   $answerLines.Add($e2ee)  # empty line skips E2EE if prompted
   $answerLines.Add("")     # spare
-  [IO.File]::WriteAllLines($answersPath, $answerLines)
+  Write-Utf8Lf $answersPath $answerLines.ToArray()
 } else {
   if (Test-Path $answersPath) { Remove-Item $answersPath -Force }
 }
@@ -832,6 +839,19 @@ if ((Test-Path $offlineLocal) -and ((Get-Item $offlineLocal).Length -ge 1000000)
   Warn "No offline npm bundle - on-device npm install will need Wi-Fi"
 }
 
+# Node's official ARMv7 build requires libatomic.so.1, which newer Codex Linux
+# firmware images may omit. Keep it under /home so firmware updates do not touch it.
+$libatomicName = "libatomic.so.1"
+$libatomicLocal = Join-Path $distDir $libatomicName
+if (-not (Test-Path $libatomicLocal) -or (Get-Item $libatomicLocal).Length -lt 10000) {
+  try {
+    Get-ReleaseAssetHttps $libatomicName $libatomicLocal 10000
+  } catch {
+    throw "Missing $libatomicName required by Node ARMv7 and could not download it: $_"
+  }
+}
+Ok "Node compatibility library ready: $libatomicLocal"
+
 # Ensure sqlite binding exists where deployer expects it
 $sqliteDist = Join-Path $distDir "node_sqlite3.node"
 $sqliteRev = Join-Path $RepoRoot "third_party\revcord\node_sqlite3.node"
@@ -852,28 +872,30 @@ if (-not (Test-Path $sqliteRev) -or (Get-Item $sqliteRev).Length -lt 100000) {
 }
 
 Info "Deploying files..."
-Invoke-Remote "mkdir -p /home/root/hwr/bin /home/root/hwr/conf /home/root/hwr/scripts /home/root/hwr/out /home/root/hwr/state /home/root/hwr/third_party/revcord /home/root/downloads"
+Invoke-Remote "mkdir -p /home/root/hwr/bin /home/root/hwr/conf /home/root/hwr/lib /home/root/hwr/scripts /home/root/hwr/out /home/root/hwr/state /home/root/hwr/third_party/revcord /home/root/downloads"
 if (Test-Path $dist) {
   Copy-ToRemote $dist "/home/root/hwr/bin/rm2hwr"
 }
 Copy-ToRemote (Join-Path $RepoRoot "scripts\joplin-upsert.js") "/home/root/hwr/scripts/joplin-upsert.js"
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\sync-recent.sh") "/home/root/hwr/scripts/sync-recent.sh"
 Copy-ToRemote (Join-Path $RepoRoot "third_party\revcord\node_sqlite3.node") "/home/root/hwr/third_party/revcord/node_sqlite3.node"
+Copy-ToRemote $libatomicLocal "/home/root/hwr/lib/libatomic.so.1"
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\install-node-jonobones.sh") "/home/root/hwr/scripts/install-node-jonobones.sh"
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\jonobones-init-cloud.sh") "/home/root/hwr/scripts/jonobones-init-cloud.sh"
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\install-job.sh") "/home/root/hwr/scripts/install-job.sh"
 Copy-ToRemote $localHwr "/home/root/hwr/conf/hwr.env"
 $metaLocal = Join-Path $env:TEMP "rm2-install.meta"
-@(
+$metaLines = @(
   "SKIP_JONOBONES_INIT=$(if ($doInit) {'0'} else {'1'})"
   "START_JONOBONES=$(if ($startJb) {'1'} else {'0'})"
   "JONOBONES_PARENT_ID=$parentId"
   "JONOBONES_PARENT_TITLE=$parentTitle"
-) | Set-Content -Encoding ascii $metaLocal
+)
+Write-Utf8Lf $metaLocal $metaLines
 Copy-ToRemote $metaLocal "/home/root/hwr/conf/install.meta"
 # Keep PARENT_* next to token in jonobones.env (create or patch; init also writes these from install.meta)
 $patchParentSh = Join-Path $env:TEMP "rm2-patch-parent.sh"
-@"
+$patchParentScript = @"
 JB=/home/root/hwr/conf/jonobones.env
 mkdir -p /home/root/hwr/conf
 touch "`$JB"
@@ -885,7 +907,8 @@ if [ -n "`$PARENT_ID" ]; then echo "JONOBONES_PARENT_ID=`$PARENT_ID" >> "`$tmp";
 if [ -n "`$PARENT_TITLE" ]; then echo "JONOBONES_PARENT_TITLE=`$PARENT_TITLE" >> "`$tmp"; fi
 mv "`$tmp" "`$JB"
 chmod 0600 "`$JB"
-"@ | Set-Content -Encoding ascii $patchParentSh
+"@
+Write-Utf8Lf $patchParentSh $patchParentScript
 Copy-ToRemote $patchParentSh "/tmp/rm2-patch-parent.sh"
 Invoke-Remote "sh /tmp/rm2-patch-parent.sh; rm -f /tmp/rm2-patch-parent.sh"
 Remove-Item $patchParentSh -Force -ErrorAction SilentlyContinue
@@ -905,7 +928,7 @@ Info "Installing systemd timer for sync-recent (interval=$syncIntervalHours h)..
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\hwr-sync-recent.service") "/tmp/hwr-sync-recent.service"
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\hwr-sync-recent.timer") "/tmp/hwr-sync-recent.timer"
 $timerLocal = Join-Path $env:TEMP "rm2-install-timer.sh"
-@(
+$timerLines = @(
   '#!/bin/sh'
   'set -e'
   'HOURS=' + $syncIntervalHours
@@ -935,7 +958,8 @@ $timerLocal = Join-Path $env:TEMP "rm2-install-timer.sh"
   '  echo "systemd timer disabled (SYNC_INTERVAL_HOURS=0)"'
   'fi'
   'rm -f /tmp/hwr-sync-recent.service /tmp/hwr-sync-recent.timer'
-) | Set-Content -Encoding ascii $timerLocal
+)
+Write-Utf8Lf $timerLocal $timerLines
 Copy-ToRemote $timerLocal "/tmp/rm2-install-timer.sh"
 Invoke-Remote "chmod 0755 /tmp/rm2-install-timer.sh; sh /tmp/rm2-install-timer.sh; rm -f /tmp/rm2-install-timer.sh"
 Ok "Systemd timer configured (SYNC_INTERVAL_HOURS=$syncIntervalHours)"

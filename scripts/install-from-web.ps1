@@ -36,6 +36,7 @@ $OfflineName = "jonobones-rm2-npm-offline-0.1.5-joplin-3.7.1.tar.gz"
 $NodeTarName = "node-v20.20.2-linux-armv7l.tar.xz"
 $BinaryName = "rm2hwr-linux-armv7"
 $SqliteName = "node_sqlite3.node"
+$LibatomicName = "libatomic.so.1"
 
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
@@ -109,6 +110,7 @@ $assets = @(
   @{ Name = $OfflineName; MinSize = 1000000 }
   @{ Name = $NodeTarName; MinSize = 1000000 }
   @{ Name = $SqliteName;  MinSize = 100000 }
+  @{ Name = $LibatomicName; MinSize = 10000 }
 )
 
 foreach ($a in $assets) {
