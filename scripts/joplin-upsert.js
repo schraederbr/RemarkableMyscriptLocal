@@ -270,17 +270,23 @@ async function buildBodyWithResources(base, token, payload, dir, mode) {
     // No H1 title in body — Joplin already displays the note title field.
     const lines = [];
     let first = true;
-    for (const p of payload.pages) {
-      if (p.status !== 'OK' && p.status !== 'EMPTY' && p.status !== 'SKIP') continue;
+    const appendPage = (p, includeText, includeSvg) => {
+      if (p.status !== 'OK' && p.status !== 'EMPTY' && p.status !== 'SKIP') return;
       const pageN = (p.index | 0) + 1;
-      const hasSvg = wantSVG(mode) && p.svgPath;
-      const text = wantText(mode) ? String(p.text || '').replace(/\n+$/, '') : '';
-      if (!hasSvg && !text) continue;
+      const hasSvg = includeSvg && p.svgPath;
+      const text = includeText ? String(p.text || '').replace(/\n+$/, '') : '';
+      if (!hasSvg && !text) return;
       if (!first) lines.push('', '---', '');
       first = false;
       lines.push('Remarkable:', 'Page ' + pageN, '');
       if (hasSvg) lines.push('![Page ' + pageN + '](' + path.basename(p.svgPath) + ')', '');
       if (text) lines.push(text);
+    };
+    if (wantText(mode)) {
+      for (const p of payload.pages) appendPage(p, true, false);
+    }
+    if (wantSVG(mode)) {
+      for (const p of payload.pages) appendPage(p, false, true);
     }
     body = lines.join('\n') + '\n';
   } else {
