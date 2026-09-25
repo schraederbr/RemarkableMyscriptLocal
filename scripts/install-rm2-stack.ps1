@@ -725,7 +725,7 @@ New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 $dist = Join-Path $distDir "rm2hwr-linux-armv7"
 $releaseTag = $env:RM2_RELEASE_TAG
 if (-not $releaseTag) { $releaseTag = $env:RELEASE_TAG }
-if (-not $releaseTag) { $releaseTag = "v0.4.0" }
+if (-not $releaseTag) { $releaseTag = "v1.0.0" }
 $releaseAssetBase = "https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/$releaseTag"
 
 function Get-ReleaseAssetHttps([string]$Name, [string]$OutFile, [int]$MinSize = 100000) {

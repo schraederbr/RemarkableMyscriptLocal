@@ -46,7 +46,7 @@ func TestBuildFullTextTextMode(t *testing.T) {
 func TestBuildFullTextSVGAndBoth(t *testing.T) {
 	pages := []Page{
 		{Index: 0, PageUUID: "a", Status: "OK", Text: "hello\n", SvgPath: "a.svg"},
-		{Index: 1, PageUUID: "b", Status: "OK", Text: "", SvgPath: "b.svg"},
+		{Index: 1, PageUUID: "b", Status: "OK", Text: "world", SvgPath: "b.svg"},
 		{Index: 2, PageUUID: "c", Status: "EMPTY", Text: ""},
 	}
 	svgOnly := BuildFullText(pages, "svg")
@@ -64,11 +64,15 @@ func TestBuildFullTextSVGAndBoth(t *testing.T) {
 	}
 
 	both := BuildFullText(pages, "both")
-	if !strings.Contains(both, "![Page 1](a.svg)\n\nhello") {
-		t.Fatalf("both page1: %q", both)
+	helloAt := strings.Index(both, "hello")
+	worldAt := strings.Index(both, "world")
+	page1SVGAt := strings.Index(both, "![Page 1](a.svg)")
+	page2SVGAt := strings.Index(both, "![Page 2](b.svg)")
+	if helloAt < 0 || worldAt < 0 || page1SVGAt < 0 || page2SVGAt < 0 {
+		t.Fatalf("both missing content: %q", both)
 	}
-	if !strings.Contains(both, "![Page 2](b.svg)") {
-		t.Fatalf("both page2: %q", both)
+	if !(helloAt < worldAt && worldAt < page1SVGAt && page1SVGAt < page2SVGAt) {
+		t.Fatalf("both must put all text before all SVGs: %q", both)
 	}
 	if strings.Contains(both, "Remarkable:\nPage 3") {
 		t.Fatalf("empty in both: %q", both)

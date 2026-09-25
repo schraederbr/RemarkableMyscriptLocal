@@ -35,8 +35,9 @@ type Payload struct {
 // BuildFullText concatenates pages into markdown suitable for the Joplin note body.
 // Does not include an H1 title — Joplin already shows the note title field
 // (reMarkable visibleName). mode is text|svg|both (empty → text). Includes OK
-// pages and SKIP pages that still have content (text and/or svgPath). Image
-// lines use local filenames; joplin-upsert rewrites them to :/resourceId after upload.
+// pages and SKIP pages that still have content (text and/or svgPath). When both
+// are requested, every page's text is emitted before any page SVG. Image lines
+// use local filenames; joplin-upsert rewrites them to :/resourceId after upload.
 func BuildFullText(pages []Page, mode string) string {
 	mode = myscript.NormalizeUploadMode(mode)
 	wantText := mode == "text" || mode == "both"
@@ -44,15 +45,15 @@ func BuildFullText(pages []Page, mode string) string {
 
 	var b strings.Builder
 	first := true
-	for _, p := range pages {
+	appendPage := func(p Page, includeText, includeSVG bool) {
 		if p.Status != "OK" && p.Status != "EMPTY" && p.Status != "SKIP" {
-			continue
+			return
 		}
 		text := strings.TrimRight(p.Text, "\n")
-		hasText := wantText && text != ""
-		hasSVG := wantSVG && p.SvgPath != ""
+		hasText := includeText && text != ""
+		hasSVG := includeSVG && p.SvgPath != ""
 		if !hasText && !hasSVG {
-			continue
+			return
 		}
 		if !first {
 			b.WriteString("\n\n---\n\n")
@@ -69,6 +70,16 @@ func BuildFullText(pages []Page, mode string) string {
 		if hasText {
 			b.WriteString(text)
 			b.WriteString("\n")
+		}
+	}
+	if wantText {
+		for _, p := range pages {
+			appendPage(p, true, false)
+		}
+	}
+	if wantSVG {
+		for _, p := range pages {
+			appendPage(p, false, true)
 		}
 	}
 	return b.String()

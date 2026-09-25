@@ -6,13 +6,13 @@ Turn reMarkable 2 notebooks into **Joplin notes that sync with Joplin Cloud** (o
 
 ### Download and double-click (no paste required)
 
-From the [**v0.4.0** release](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/tag/v0.4.0):
+From the [**v1.0.0** release](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/tag/v1.0.0):
 
 | OS | Asset | How |
 |----|-------|-----|
-| **Windows** | [`install-rm2-windows.exe`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.4.0/install-rm2-windows.exe) | Double-click (console stays open for prompts). Fallback: [`install-rm2-windows.cmd`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.4.0/install-rm2-windows.cmd) |
-| **Linux** | [`install-rm2-linux`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.4.0/install-rm2-linux) | `chmod +x install-rm2-linux && ./install-rm2-linux` (or double-click from a file manager that runs executables in a terminal) |
-| **macOS** | [`install-rm2-macos.command`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.4.0/install-rm2-macos.command) | Double-click (opens Terminal). First time: right-click → Open if Gatekeeper blocks |
+| **Windows** | [`install-rm2-windows.exe`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v1.0.0/install-rm2-windows.exe) | Double-click (console stays open for prompts). Fallback: [`install-rm2-windows.cmd`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v1.0.0/install-rm2-windows.cmd) |
+| **Linux** | [`install-rm2-linux`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v1.0.0/install-rm2-linux) | `chmod +x install-rm2-linux && ./install-rm2-linux` (or double-click from a file manager that runs executables in a terminal) |
+| **macOS** | [`install-rm2-macos.command`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v1.0.0/install-rm2-macos.command) | Double-click (opens Terminal). First time: right-click → Open if Gatekeeper blocks |
 
 SmartScreen / Gatekeeper may warn on first run — that is normal for unsigned downloadable installers.
 
@@ -21,18 +21,18 @@ SmartScreen / Gatekeeper may warn on first run — that is normal for unsigned d
 **Windows** (USB `10.11.99.1` by default — no local clone or Go required):
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.4.0/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell -NoProfile -ExecutionPolicy Bypass -File $f"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v1.0.0/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell -NoProfile -ExecutionPolicy Bypass -File $f"
 ```
 
 **Linux / macOS** (bash + curl + OpenSSH):
 
 ```
-curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.4.0/scripts/install-from-web.sh | bash
+curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v1.0.0/scripts/install-from-web.sh | bash
 ```
 
-Downloads the **`v0.4.0`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `libatomic.so.1`, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
+Downloads the **`v1.0.0`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `libatomic.so.1`, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
 
-**v0.4.0** adds an optional, default-off AppLoad launcher with a **Sync Joplin** shortcut and keeps jonobones available after reboot through a supervised systemd service. It retains v0.3.9 dual firmware support for legacy reMarkable 2.x `pages` metadata and reMarkable 3.x `cPages` metadata.
+**v1.0.0** is the stable release of the dual-firmware HWR-to-Joplin stack, with the optional AppLoad **Sync Joplin** shortcut, supervised jonobones API, and corrected automatic timer lifecycle.
 
 From a local clone (optional):
 
