@@ -11,8 +11,8 @@ import (
 )
 
 // ReleaseTag is the GitHub release / raw path tag this launcher installs.
-// Override at build: -ldflags "-X main.ReleaseTag=v1.0.0"
-var ReleaseTag = "v1.0.0"
+// Override at build: -ldflags "-X main.ReleaseTag=v1.0.1"
+var ReleaseTag = "v1.0.1"
 
 const repoRaw = "https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal"
 

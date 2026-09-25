@@ -274,7 +274,7 @@ echo "What this installer will ask for (have these ready):"
 echo "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
 echo "  2) Joplin upload mode: SVG only / handwriting text / both (default both)"
 echo "  3) MyScript APP_KEY (HMAC optional) - only if handwriting text (text or both)"
-echo "  4) Periodic sync interval hours (default 6; 0=disable systemd timer)"
+echo "  4) Auto-sync poll interval in awake minutes (default 15; 0=disable systemd timer)"
 echo "  5) Optional AppLoad launcher + Sync Joplin shortcut (default no)"
 echo "  6) Joplin notebook for NEW notes (blank=auto most notes; or title/id)"
 echo "  7) Joplin Cloud email + password"
@@ -289,7 +289,7 @@ APP_KEY="$(dotenv_get APP_KEY "$SECRETS")"
 HMAC_KEY="$(dotenv_get HMAC_KEY "$SECRETS")"
 LANG_VAL="$(dotenv_get LANG "$SECRETS")"; LANG_VAL="${LANG_VAL:-en_US}"
 UPLOAD_MODE="$(dotenv_get UPLOAD_MODE "$SECRETS")"
-SYNC_INTERVAL_HOURS="$(dotenv_get SYNC_INTERVAL_HOURS "$SECRETS")"
+SYNC_INTERVAL_MINUTES="$(dotenv_get SYNC_INTERVAL_MINUTES "$SECRETS")"
 INSTALL_APPLOAD="$(dotenv_get INSTALL_APPLOAD "$SECRETS")"
 PARENT_ID="$(dotenv_get JONOBONES_PARENT_ID "$SECRETS")"
 PARENT_TITLE="$(dotenv_get JONOBONES_PARENT_TITLE "$SECRETS")"
@@ -368,14 +368,15 @@ else
   fi
 fi
 
-if [[ -z "$SYNC_INTERVAL_HOURS" ]]; then
+if [[ -z "$SYNC_INTERVAL_MINUTES" ]]; then
   if [[ "$NONINTERACTIVE" == "1" ]]; then
-    SYNC_INTERVAL_HOURS=6
+    SYNC_INTERVAL_MINUTES=15
   else
     echo
     echo "How often should the tablet auto-sync recent notebooks to Joplin?"
-    echo "  Enter hours between runs (default 6). Use 0 to skip installing systemd timer."
-    SYNC_INTERVAL_HOURS=$(ask "Sync interval hours" "6")
+    echo "  Enter awake minutes between checks (default 15). Sleeping time does not count."
+    echo "  Use 0 to skip installing the systemd timer."
+    SYNC_INTERVAL_MINUTES=$(ask "Sync interval minutes" "15")
   fi
 fi
 
@@ -533,7 +534,7 @@ APP_KEY=$APP_KEY
 HMAC_KEY=$HMAC_KEY
 LANG=$LANG_VAL
 UPLOAD_MODE=$UPLOAD_MODE
-SYNC_INTERVAL_HOURS=$SYNC_INTERVAL_HOURS
+SYNC_INTERVAL_MINUTES=$SYNC_INTERVAL_MINUTES
 INSTALL_APPLOAD=$INSTALL_APPLOAD
 JONOBONES_PARENT_ID=$PARENT_ID
 JONOBONES_PARENT_TITLE=$PARENT_TITLE
@@ -555,7 +556,7 @@ LANG=$LANG_VAL
 CONTENT_TYPE=Text
 API_URL=https://cloud.myscript.com/api/v4.0/iink/batch
 UPLOAD_MODE=$UPLOAD_MODE
-SYNC_INTERVAL_HOURS=$SYNC_INTERVAL_HOURS
+SYNC_INTERVAL_MINUTES=$SYNC_INTERVAL_MINUTES
 EOF
 ok "Saved conf/install.secrets + conf/hwr.env (gitignored)"
 
@@ -648,7 +649,7 @@ fi
 
 # Binary: prefer dist, else HTTPS release
 DIST="$ROOT/dist/rm2hwr-linux-armv7"
-RELEASE_TAG="${RM2_RELEASE_TAG:-${RELEASE_TAG:-v1.0.0}}"
+RELEASE_TAG="${RM2_RELEASE_TAG:-${RELEASE_TAG:-v1.0.1}}"
 RELEASE_BASE="https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/${RELEASE_TAG}"
 if [[ -f "$DIST" && $(wc -c <"$DIST") -gt 100000 ]]; then
   ok "Using existing binary $DIST"
@@ -738,14 +739,14 @@ ssh -o BatchMode=yes "${USER_NAME}@${HOST}" \
   'chmod +x /home/root/hwr/scripts/*.sh; chmod 0600 /home/root/hwr/conf/hwr.env; rm -f /tmp/rm2-install.status; : > /tmp/rm2-install.log; nohup sh /home/root/hwr/scripts/install-job.sh >/tmp/rm2-install.nohup.out 2>&1 & echo started'
 
 # systemd timer
-HOURS="$SYNC_INTERVAL_HOURS"
-HOURS=${HOURS:-6}
+MINUTES="$SYNC_INTERVAL_MINUTES"
+MINUTES=${MINUTES:-15}
 scp -o BatchMode=yes \
   "$ROOT/scripts/on-device/hwr-sync-recent.service" \
   "$ROOT/scripts/on-device/hwr-sync-recent.timer" \
   "$ROOT/scripts/on-device/jonobones.service" \
   "${USER_NAME}@${HOST}:/tmp/"
-ssh -o BatchMode=yes "${USER_NAME}@${HOST}" "HOURS='$HOURS' sh -s" <<'TIMER'
+ssh -o BatchMode=yes "${USER_NAME}@${HOST}" "MINUTES='$MINUTES' sh -s" <<'TIMER'
 set -e
 UNIT_DIR=/etc/systemd/system
 chmod 0755 /home/root/hwr/scripts/sync-recent.sh
@@ -759,17 +760,18 @@ if command -v crontab >/dev/null 2>&1; then
   if [ -s "$TMP" ]; then crontab "$TMP" 2>/dev/null || true; else crontab -r 2>/dev/null || true; fi
   rm -f "$TMP"
 fi
-if [ -n "$HOURS" ] && [ "$HOURS" -gt 0 ] 2>/dev/null; then
-  sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=${HOURS}h/" "$UNIT_DIR/hwr-sync-recent.timer"
+if [ -n "$MINUTES" ] && [ "$MINUTES" -gt 0 ] 2>/dev/null; then
+  # Short monotonic polling guarantees a run while the tablet is awake without waking it from suspend.
+  sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=${MINUTES}min/" "$UNIT_DIR/hwr-sync-recent.timer"
   systemctl daemon-reload
   systemctl enable hwr-sync-recent.timer
   systemctl start hwr-sync-recent.timer
-  echo "systemd timer enabled interval=${HOURS}h"
+  echo "systemd timer enabled awake_interval=${MINUTES}min"
 else
   systemctl daemon-reload
   systemctl stop hwr-sync-recent.timer 2>/dev/null || true
   systemctl disable hwr-sync-recent.timer 2>/dev/null || true
-  echo "systemd timer disabled (SYNC_INTERVAL_HOURS=0)"
+  echo "systemd timer disabled (SYNC_INTERVAL_MINUTES=0)"
 fi
 rm -f /tmp/hwr-sync-recent.service /tmp/hwr-sync-recent.timer /tmp/jonobones.service
 TIMER

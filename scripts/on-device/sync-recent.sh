@@ -6,10 +6,12 @@
 #   /home/root/hwr/state/<doc-uuid>.json
 #   { lastUploadedAt, joplinNoteId?, pages: [{pageUuid, sha256, mtime}] }
 #
-# Systemd timer (host installer): every SYNC_INTERVAL_HOURS hours (default 6).
+# Systemd timer (host installer): every SYNC_INTERVAL_MINUTES awake minutes
+# (default 15). Suspend time intentionally does not count and the timer does not
+# wake the tablet.
 # Units: hwr-sync-recent.service + hwr-sync-recent.timer under /etc/systemd/system/.
-# Change: set SYNC_INTERVAL_HOURS in hwr.env and re-run installer, or edit the timer.
-# Disable: SYNC_INTERVAL_HOURS=0 + re-run installer, or systemctl disable --now hwr-sync-recent.timer.
+# Change: set SYNC_INTERVAL_MINUTES in hwr.env and re-run installer, or edit the timer.
+# Disable: SYNC_INTERVAL_MINUTES=0 + re-run installer, or systemctl disable --now hwr-sync-recent.timer.
 
 set -e
 
@@ -22,7 +24,7 @@ ENV_FILE="$HWR/conf/hwr.env"
 LOG="${SYNC_RECENT_LOG:-/tmp/hwr-sync-recent.log}"
 DAYS="${SYNC_RECENT_DAYS:-30}"
 
-export PATH="/home/root/.npm-global/bin:/home/root/opt/node/bin:/home/root/hwr/bin:$PATH"
+export PATH="/home/root/.npm-global/bin:/home/root/opt/node/bin:/home/root/hwr/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 export LD_LIBRARY_PATH="/home/root/hwr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 mkdir -p "$STATE_DIR"
@@ -52,6 +54,32 @@ fi
 
 log() {
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" | tee -a "$LOG"
+}
+
+wait_for_network() {
+  max_wait="${SYNC_NETWORK_WAIT_SECONDS:-45}"
+  waited=0
+
+  # network-online.target remains active across suspend on reMarkable OS, even
+  # while sleep-wifi.sh is still restoring wlan0. Wait for an actual default
+  # route before calling MyScript or asking jonobones to sync with Joplin Cloud.
+  while ! ip route 2>/dev/null | grep -q '^default '; do
+    if [ "$waited" -ge "$max_wait" ]; then
+      log "defer: no default network route after ${max_wait}s; next timer run will retry"
+      return 1
+    fi
+    if [ "$waited" -eq 0 ]; then
+      log "waiting for network after wake"
+    fi
+    sleep 3
+    waited=$((waited + 3))
+  done
+
+  if [ "$waited" -gt 0 ]; then
+    # DHCP can install the route just before DNS and HTTPS are usable.
+    sleep 3
+    log "network ready after approximately $((waited + 3))s"
+  fi
 }
 
 if ! command -v node >/dev/null 2>&1; then
@@ -168,6 +196,22 @@ for (const name of fs.readdirSync(xochitl)) {
   console.log((skip ? 'SKIP' : 'RUN') + ' ' + id);
 }
 NODE
+
+# Avoid touching the network for the common no-change poll. If work is pending,
+# tolerate the Wi-Fi restoration delay that follows resume from suspend.
+if grep -q '^RUN ' "$PLAN"; then
+  if ! wait_for_network; then
+    while read -r action uuid; do
+      if [ "$action" = "RUN" ] && [ -n "$uuid" ]; then
+        rm -f "$STATE_DIR/$uuid.pending.json"
+      fi
+    done < "$PLAN"
+    rm -f "$PLAN"
+    # A sleeping/offline tablet is expected, not a broken sync. Leave the unit
+    # successful and let the next timer tick retry the unchanged notebook.
+    exit 0
+  fi
+fi
 
 ran=0
 skipped=0
