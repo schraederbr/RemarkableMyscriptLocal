@@ -1,0 +1,21 @@
+[Unit]
+Description=jonobones local Joplin API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HOME=/home/root
+Environment=PATH=/home/root/.npm-global/bin:/home/root/opt/node/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=LD_LIBRARY_PATH=/home/root/hwr/lib
+WorkingDirectory=/home/root
+ExecStartPre=/bin/sh -c ': > /tmp/jonobones-start.log'
+ExecStart=/bin/sh -c 'exec /home/root/.npm-global/bin/jonobones start >> /tmp/jonobones-start.log 2>&1'
+ExecStartPost=/home/root/hwr/scripts/wait-jonobones.sh
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=2min
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

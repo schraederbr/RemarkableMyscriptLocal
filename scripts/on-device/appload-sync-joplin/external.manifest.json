@@ -1,0 +1,8 @@
+{
+  "name": "Sync Joplin",
+  "application": "./sync-now.sh",
+  "workingDirectory": "/home/root/xovi/exthome/appload/sync-joplin",
+  "qtfb": false,
+  "aspectRatio": "original",
+  "disablesWindowedMode": true
+}

@@ -6,13 +6,13 @@ Turn reMarkable 2 notebooks into **Joplin notes that sync with Joplin Cloud** (o
 
 ### Download and double-click (no paste required)
 
-From the [**v0.3.9** release](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/tag/v0.3.9):
+From the [**v0.4.0** release](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/tag/v0.4.0):
 
 | OS | Asset | How |
 |----|-------|-----|
-| **Windows** | [`install-rm2-windows.exe`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.9/install-rm2-windows.exe) | Double-click (console stays open for prompts). Fallback: [`install-rm2-windows.cmd`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.9/install-rm2-windows.cmd) |
-| **Linux** | [`install-rm2-linux`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.9/install-rm2-linux) | `chmod +x install-rm2-linux && ./install-rm2-linux` (or double-click from a file manager that runs executables in a terminal) |
-| **macOS** | [`install-rm2-macos.command`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.3.9/install-rm2-macos.command) | Double-click (opens Terminal). First time: right-click → Open if Gatekeeper blocks |
+| **Windows** | [`install-rm2-windows.exe`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.4.0/install-rm2-windows.exe) | Double-click (console stays open for prompts). Fallback: [`install-rm2-windows.cmd`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.4.0/install-rm2-windows.cmd) |
+| **Linux** | [`install-rm2-linux`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.4.0/install-rm2-linux) | `chmod +x install-rm2-linux && ./install-rm2-linux` (or double-click from a file manager that runs executables in a terminal) |
+| **macOS** | [`install-rm2-macos.command`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v0.4.0/install-rm2-macos.command) | Double-click (opens Terminal). First time: right-click → Open if Gatekeeper blocks |
 
 SmartScreen / Gatekeeper may warn on first run — that is normal for unsigned downloadable installers.
 
@@ -21,18 +21,18 @@ SmartScreen / Gatekeeper may warn on first run — that is normal for unsigned d
 **Windows** (USB `10.11.99.1` by default — no local clone or Go required):
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.9/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell -NoProfile -ExecutionPolicy Bypass -File $f"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.4.0/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell -NoProfile -ExecutionPolicy Bypass -File $f"
 ```
 
 **Linux / macOS** (bash + curl + OpenSSH):
 
 ```
-curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.3.9/scripts/install-from-web.sh | bash
+curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v0.4.0/scripts/install-from-web.sh | bash
 ```
 
-Downloads the **`v0.3.9`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `libatomic.so.1`, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
+Downloads the **`v0.4.0`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `libatomic.so.1`, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
 
-**v0.3.9** adds dual firmware support: legacy reMarkable 2.x `pages` metadata and reMarkable 3.x `cPages` metadata are both discovered and synchronized. Failed recognition or Joplin uploads are no longer cached as successful runs. It also includes v0.3.8 SSH fail recovery and the earlier installer reliability fixes.
+**v0.4.0** adds an optional, default-off AppLoad launcher with a **Sync Joplin** shortcut and keeps jonobones available after reboot through a supervised systemd service. It retains v0.3.9 dual firmware support for legacy reMarkable 2.x `pages` metadata and reMarkable 3.x `cPages` metadata.
 
 From a local clone (optional):
 
@@ -58,6 +58,7 @@ Have ready (see [docs/install-checklist.md](docs/install-checklist.md)):
 - MyScript `APP_KEY` (optional `HMAC_KEY`) from [developer.myscript.com](https://developer.myscript.com/) — **only if** mode is text or both (SVG-only skips these prompts)
 - Joplin Cloud email + password (or another sync target) — **verified up front** for Joplin Cloud before the long on-device install
 - Periodic sync interval hours (installer default: **6**; `0` disables systemd timer)
+- Optional **AppLoad + Sync Joplin shortcut** (installer default: **No**; reMarkable 2 firmware 3.26.x-3.27.x only; interactive tablet passcode step)
 - Joplin notebook for **NEW** notes: blank = auto (notebook with most notes); or exact title / 32-hex id
 - Optional E2EE master password
 - **Tablet on Wi-Fi with internet**
@@ -78,7 +79,9 @@ Offline bundle docs: [docs/offline-npm-bundle.md](docs/offline-npm-bundle.md).
 
 ## Day-to-day: HWR → Joplin
 
-**Supported UI path (optional):** if you use [Oxide](https://oxide.eeems.website/) on the tablet, tap the **Sync Joplin** tile (`syncjoplin.oxide` → `sync-now.sh` → `systemctl start hwr-sync-recent.service`). Oxide is only a launcher — not required for core install; CLI and the systemd timer work without it.
+**Optional AppLoad UI path:** answer **Yes** to `Install AppLoad and the Sync Joplin shortcut?` during an interactive install (default **No**). On supported reMarkable 2 firmware 3.26.x-3.27.x, the installer downloads checksum-pinned [XOVI Extensions v19](https://github.com/asivery/rm-xovi-extensions/releases/tag/v19-23052026) and [AppLoad v0.5.3](https://github.com/asivery/rm-appload/releases/tag/v0.5.3), rebuilds the firmware-specific hashtable, and adds **AppLoad → Sync Joplin**. The shortcut runs `systemctl start --no-block hwr-sync-recent.service`. After reboot, reactivate with `/home/root/xovi/start`; recover the stock UI with `/home/root/xovi/stock`.
+
+AppLoad is optional and not required for CLI or scheduled sync. `INSTALL_APPLOAD=0` is the non-interactive/default setting; activation is intentionally interactive because the tablet asks for its lock passcode while rebuilding the hashtable.
 
 ```bash
 export PATH=/home/root/.npm-global/bin:/home/root/opt/node/bin:$PATH
@@ -132,6 +135,9 @@ Handoff / replace markers / systemd timer: [docs/joplin-sync.md](docs/joplin-syn
 /home/root/.config/jonobones/default/   # jonobones profile + synced vault
 /etc/systemd/system/hwr-sync-recent.service
 /etc/systemd/system/hwr-sync-recent.timer   # OnUnitActiveSec from SYNC_INTERVAL_HOURS
+/etc/systemd/system/jonobones.service       # keeps local Joplin API alive after reboot
+/home/root/xovi/                            # optional XOVI/AppLoad installation
+/home/root/xovi/exthome/appload/sync-joplin # optional force-sync shortcut
 ```
 
 ### MyScript `hwr.env`

@@ -9,6 +9,7 @@
 # - Joplin upload mode (text / SVG / both; default both)
 # - MyScript APP_KEY (HMAC_KEY optional) only if mode is text or both
 # - Periodic sync interval hours (default 6; 0 disables systemd timer)
+# - Optional AppLoad launcher + Sync Joplin shortcut (default off)
 # - Joplin notebook for NEW notes (blank=auto most notes; or title / 32-hex id)
 # - Joplin Cloud email + password (or other sync target fields)
 # - Optional E2EE master password
@@ -284,10 +285,11 @@ Write-Host "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
 Write-Host "  2) Joplin upload mode: SVG only / handwriting text / both (default both)"
 Write-Host "  3) MyScript APP_KEY (HMAC optional) - only if you want handwriting text (text or both)"
 Write-Host "  4) Periodic sync interval hours (default 6; 0=disable systemd timer)"
-Write-Host "  5) Joplin notebook for NEW notes (blank=auto most notes; or title/id)"
-Write-Host "  6) Joplin Cloud email + password"
-Write-Host "  7) Optional: Joplin E2EE master password"
-Write-Host "  8) Tablet on Wi-Fi with internet (Joplin Cloud; MyScript only if text/HWR; npm if offline bundle missing)"
+Write-Host "  5) Optional AppLoad launcher + Sync Joplin shortcut (default no)"
+Write-Host "  6) Joplin notebook for NEW notes (blank=auto most notes; or title/id)"
+Write-Host "  7) Joplin Cloud email + password"
+Write-Host "  8) Optional: Joplin E2EE master password"
+Write-Host "  9) Tablet on Wi-Fi with internet (Joplin Cloud; MyScript only if text/HWR; npm if offline bundle missing)"
 Write-Host "  See docs/install-checklist.md"
 Write-Host ""
 
@@ -395,6 +397,21 @@ if ($syncIntervalHours -notmatch '^\d+$') {
     $syncIntervalHours = Ask "SYNC_INTERVAL_HOURS" "6"
     if ($syncIntervalHours -notmatch '^\d+$') { $syncIntervalHours = "6" }
   }
+}
+
+$installAppLoad = $false
+if ($sec.ContainsKey("INSTALL_APPLOAD")) {
+  $installAppLoad = $sec["INSTALL_APPLOAD"].Trim() -match '^(?i:1|y|yes|true|on)$'
+} elseif (-not $NonInteractive) {
+  Write-Host ""
+  Write-Host "Optional AppLoad UI launcher"
+  Write-Host "  Adds AppLoad and a Sync Joplin shortcut to the tablet UI."
+  Write-Host "  Supported here only on reMarkable 2 firmware 3.26.x-3.27.x."
+  Write-Host "  Activation restarts the tablet UI and asks for the tablet lock passcode."
+  $installAppLoad = AskYes "Install AppLoad and the Sync Joplin shortcut?" $false
+}
+if ($NonInteractive -and $installAppLoad) {
+  throw "INSTALL_APPLOAD=1 requires an interactive install because the tablet lock passcode is entered on-device during hashtable rebuild"
 }
 
 # Joplin target notebook for NEW notes (creates only; updates match by title anywhere)
@@ -597,6 +614,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "conf") | Out-Nul
   "LANG=$lang"
   "UPLOAD_MODE=$uploadMode"
   "SYNC_INTERVAL_HOURS=$syncIntervalHours"
+  "INSTALL_APPLOAD=$(if ($installAppLoad) {'1'} else {'0'})"
   "JONOBONES_PARENT_ID=$parentId"
   "JONOBONES_PARENT_TITLE=$parentTitle"
   "SYNC_TARGET=$syncTarget"
@@ -707,7 +725,7 @@ New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 $dist = Join-Path $distDir "rm2hwr-linux-armv7"
 $releaseTag = $env:RM2_RELEASE_TAG
 if (-not $releaseTag) { $releaseTag = $env:RELEASE_TAG }
-if (-not $releaseTag) { $releaseTag = "v0.3.9" }
+if (-not $releaseTag) { $releaseTag = "v0.4.0" }
 $releaseAssetBase = "https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/$releaseTag"
 
 function Get-ReleaseAssetHttps([string]$Name, [string]$OutFile, [int]$MinSize = 100000) {
@@ -723,6 +741,28 @@ function Get-ReleaseAssetHttps([string]$Name, [string]$OutFile, [int]$MinSize = 
     throw "HTTPS download failed or too small: $OutFile from $url"
   }
   Ok ("Downloaded {0} ({1:N0} bytes)" -f $OutFile, (Get-Item $OutFile).Length)
+}
+
+function Get-PinnedHttpsAsset([string]$Url, [string]$OutFile, [string]$Sha256, [int]$MinSize) {
+  $valid = $false
+  if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -ge $MinSize) {
+    $valid = ((Get-FileHash -Algorithm SHA256 $OutFile).Hash.ToLowerInvariant() -eq $Sha256)
+  }
+  if (-not $valid) {
+    Info "Downloading pinned optional asset: $([IO.Path]::GetFileName($OutFile))"
+    $prevProgress = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
+    try {
+      Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+    } finally {
+      $ProgressPreference = $prevProgress
+    }
+  }
+  if (-not (Test-Path $OutFile) -or (Get-Item $OutFile).Length -lt $MinSize) {
+    throw "Pinned asset download failed or is too small: $OutFile"
+  }
+  $actual = (Get-FileHash -Algorithm SHA256 $OutFile).Hash.ToLowerInvariant()
+  if ($actual -ne $Sha256) { throw "SHA-256 mismatch for $OutFile (got $actual)" }
+  Ok "Verified $([IO.Path]::GetFileName($OutFile)) SHA-256"
 }
 
 function Test-GoAvailable {
@@ -852,6 +892,21 @@ if (-not (Test-Path $libatomicLocal) -or (Get-Item $libatomicLocal).Length -lt 1
 }
 Ok "Node compatibility library ready: $libatomicLocal"
 
+$appLoadBundleDir = Join-Path $env:TEMP "rm2-appload-v0.5.3"
+$xoviArchive = Join-Path $appLoadBundleDir "xovi-arm32.tar.gz"
+$appLoadArchive = Join-Path $appLoadBundleDir "appload-arm32.zip"
+$appLoadIcon = Join-Path $appLoadBundleDir "appload-sync-icon.png"
+if ($installAppLoad) {
+  $firmware = Invoke-RemoteCapture "sed -n 's/^REMARKABLE_RELEASE_VERSION=//p' /usr/share/remarkable/update.conf 2>/dev/null | head -n1"
+  if ($firmware -notmatch '^3\.(26|27)\.') {
+    throw "AppLoad option supports reMarkable 2 firmware 3.26.x-3.27.x; tablet reports '$firmware'"
+  }
+  New-Item -ItemType Directory -Force -Path $appLoadBundleDir | Out-Null
+  Get-PinnedHttpsAsset "https://github.com/asivery/rm-xovi-extensions/releases/download/v19-23052026/xovi-arm32.tar.gz" $xoviArchive "9aa00537ad41e9be0c3151992bfc25106465318cf5bb4c41cf59b3ddd4866377" 6000000
+  Get-PinnedHttpsAsset "https://github.com/asivery/rm-appload/releases/download/v0.5.3/appload-arm32.zip" $appLoadArchive "dd68c6816c121934da78f59eb497c215e5a9729200de0a8a5bcbeaa5d0aa068b" 4000000
+  Get-PinnedHttpsAsset "https://raw.githubusercontent.com/asivery/rm-appload/v0.5.3/examples/appload/frontend-only/icon.png" $appLoadIcon "5fb6481e24bfaac1668bd28b921c5413b4cd0fec0ba8ce4e27dc52610837faab" 2000
+}
+
 # Ensure sqlite binding exists where deployer expects it
 $sqliteDist = Join-Path $distDir "node_sqlite3.node"
 $sqliteRev = Join-Path $RepoRoot "third_party\revcord\node_sqlite3.node"
@@ -883,7 +938,18 @@ Copy-ToRemote $libatomicLocal "/home/root/hwr/lib/libatomic.so.1"
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\install-node-jonobones.sh") "/home/root/hwr/scripts/install-node-jonobones.sh"
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\jonobones-init-cloud.sh") "/home/root/hwr/scripts/jonobones-init-cloud.sh"
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\install-job.sh") "/home/root/hwr/scripts/install-job.sh"
+Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\wait-jonobones.sh") "/home/root/hwr/scripts/wait-jonobones.sh"
 Copy-ToRemote $localHwr "/home/root/hwr/conf/hwr.env"
+if ($installAppLoad) {
+  Info "Staging pinned XOVI/AppLoad packages and Sync Joplin shortcut..."
+  Invoke-Remote "mkdir -p /tmp/appload-installer/sync-joplin"
+  Copy-ToRemote $xoviArchive "/tmp/appload-installer/xovi-arm32.tar.gz"
+  Copy-ToRemote $appLoadArchive "/tmp/appload-installer/appload-arm32.zip"
+  Copy-ToRemote $appLoadIcon "/tmp/appload-installer/appload-sync-icon.png"
+  Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\install-appload.sh") "/tmp/appload-installer/install-appload.sh"
+  Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\appload-sync-joplin\external.manifest.json") "/tmp/appload-installer/sync-joplin/external.manifest.json"
+  Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\appload-sync-joplin\sync-now.sh") "/tmp/appload-installer/sync-joplin/sync-now.sh"
+}
 $metaLocal = Join-Path $env:TEMP "rm2-install.meta"
 $metaLines = @(
   "SKIP_JONOBONES_INIT=$(if ($doInit) {'0'} else {'1'})"
@@ -927,6 +993,7 @@ Info "Installing systemd timer for sync-recent (interval=$syncIntervalHours h)..
 # RM2 has systemctl but no crond; BusyBox crontab is a no-op on real hardware.
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\hwr-sync-recent.service") "/tmp/hwr-sync-recent.service"
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\hwr-sync-recent.timer") "/tmp/hwr-sync-recent.timer"
+Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\jonobones.service") "/tmp/jonobones.service"
 $timerLocal = Join-Path $env:TEMP "rm2-install-timer.sh"
 $timerLines = @(
   '#!/bin/sh'
@@ -934,8 +1001,10 @@ $timerLines = @(
   'HOURS=' + $syncIntervalHours
   'UNIT_DIR=/etc/systemd/system'
   'chmod 0755 /home/root/hwr/scripts/sync-recent.sh'
+  'chmod 0755 /home/root/hwr/scripts/wait-jonobones.sh'
   'cp /tmp/hwr-sync-recent.service "$UNIT_DIR/hwr-sync-recent.service"'
   'cp /tmp/hwr-sync-recent.timer "$UNIT_DIR/hwr-sync-recent.timer"'
+  'cp /tmp/jonobones.service "$UNIT_DIR/jonobones.service"'
   '# Drop any leftover sync-recent crontab line from older installers (harmless if no crontab)'
   'if command -v crontab >/dev/null 2>&1; then'
   '  TMP=/tmp/rm2-crontab.new'
@@ -957,14 +1026,40 @@ $timerLines = @(
   '  systemctl disable hwr-sync-recent.timer 2>/dev/null || true'
   '  echo "systemd timer disabled (SYNC_INTERVAL_HOURS=0)"'
   'fi'
-  'rm -f /tmp/hwr-sync-recent.service /tmp/hwr-sync-recent.timer'
+  'rm -f /tmp/hwr-sync-recent.service /tmp/hwr-sync-recent.timer /tmp/jonobones.service'
 )
 Write-Utf8Lf $timerLocal $timerLines
 Copy-ToRemote $timerLocal "/tmp/rm2-install-timer.sh"
 Invoke-Remote "chmod 0755 /tmp/rm2-install-timer.sh; sh /tmp/rm2-install-timer.sh; rm -f /tmp/rm2-install-timer.sh"
 Ok "Systemd timer configured (SYNC_INTERVAL_HOURS=$syncIntervalHours)"
 
+function Install-OptionalAppLoad {
+  if (-not $installAppLoad) { return }
+
+  Info "Installing optional XOVI v19 + AppLoad v0.5.3 (ARM32)..."
+  Invoke-Remote "chmod 0755 /tmp/appload-installer/install-appload.sh /tmp/appload-installer/sync-joplin/sync-now.sh; /tmp/appload-installer/install-appload.sh /tmp/appload-installer/xovi-arm32.tar.gz /tmp/appload-installer/appload-arm32.zip /tmp/appload-installer/sync-joplin /tmp/appload-installer/appload-sync-icon.png"
+  Write-Host ""
+  Warn "AppLoad activation will restart the tablet UI. Keep the tablet awake and enter its normal lock passcode when prompted on-screen."
+  $null = Ask "Press Enter when the tablet is nearby and ready"
+
+  try {
+    & ssh -tt -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${User}@${HostName}" 'printf "\n" | /home/root/xovi/rebuild_hashtable'
+    if ($LASTEXITCODE -ne 0) { throw "XOVI hashtable rebuild failed ($LASTEXITCODE)" }
+    Invoke-Remote '/home/root/xovi/start; sleep 10; systemctl is-active --quiet xochitl; pid=$(pidof xochitl); test -n "$pid"; tr "\0" "\n" <"/proc/$pid/environ" | grep -q "^LD_PRELOAD=/home/root/xovi/xovi.so$"; test -x /home/root/xovi/exthome/appload/sync-joplin/sync-now.sh'
+  } catch {
+    Warn "AppLoad activation failed; restoring the stock tablet UI."
+    try { Invoke-Remote '/home/root/xovi/stock 2>/dev/null || systemctl restart xochitl' } catch { Warn "Automatic stock recovery also failed; run /home/root/xovi/stock over SSH." }
+    throw
+  }
+
+  Invoke-Remote "rm -rf /tmp/appload-installer"
+  Ok "AppLoad active; open AppLoad in the sidebar and tap Sync Joplin to force a sync"
+  Warn "After a reboot, reactivate with: ssh ${User}@${HostName} /home/root/xovi/start"
+  Write-Host "Stock recovery: ssh ${User}@${HostName} /home/root/xovi/stock"
+}
+
 if ($SkipJonobones) {
+  Install-OptionalAppLoad
   Ok "SkipJonobones set - done after deploy"
   exit 0
 }
@@ -1055,6 +1150,8 @@ while ((Get-Date) -lt $deadline) {
   }
 }
 if ($phase -ne "ok") { throw "Timed out waiting for install-job" }
+
+Install-OptionalAppLoad
 
 Ok "Installer finished"
 Write-Host ""
