@@ -131,7 +131,7 @@ Installer prompt: blank = auto; or title / id. Stored in `conf/jonobones.env` ne
 
 ### Periodic sync (`sync-recent.sh`)
 
-On-device **systemd timer** (default every **6** hours) runs /home/root/hwr/scripts/sync-recent.sh via hwr-sync-recent.service / hwr-sync-recent.timer (reMarkable 2 has systemctl but no crond; BusyBox crontab is a no-op on real hardware):
+On-device **systemd timer** (default every **15 awake minutes**) runs /home/root/hwr/scripts/sync-recent.sh via hwr-sync-recent.service / hwr-sync-recent.timer (reMarkable 2 has systemctl but no crond; BusyBox crontab is a no-op on real hardware). The monotonic timer pauses in suspend, so it does not wake or drain the tablet; after a normal wake it runs within 15 awake minutes. A bounded route wait prevents uploads from racing Wi-Fi restoration:
 
 1. Finds DocumentType notebooks with lastModified in the last 30 days
 2. SHA-256 + mtime each .rm page; skips if /home/root/hwr/state/<doc-uuid>.json matches
@@ -140,6 +140,6 @@ On-device **systemd timer** (default every **6** hours) runs /home/root/hwr/scri
 
 **Optional AppLoad launcher:** choose the installer’s AppLoad option (default off) to add **AppLoad → Sync Joplin**, which runs `systemctl start --no-block hwr-sync-recent.service`. This option is restricted to reMarkable 2 firmware 3.26.x-3.27.x and requires an interactive firmware-specific hashtable rebuild. After reboot run `/home/root/xovi/start`; stock recovery is `/home/root/xovi/stock`. AppLoad is not required for core sync.
 
-Change interval: SYNC_INTERVAL_HOURS in hwr.env + re-run installer (rewrites OnUnitActiveSec), or systemctl edit hwr-sync-recent.timer.  
-Disable: set SYNC_INTERVAL_HOURS=0 and re-run installer, or systemctl disable --now hwr-sync-recent.timer.  
+Change interval: `SYNC_INTERVAL_MINUTES` in hwr.env + re-run installer (rewrites `OnUnitActiveSec`), or `systemctl edit hwr-sync-recent.timer`.
+Disable: set `SYNC_INTERVAL_MINUTES=0` and re-run installer, or `systemctl disable --now hwr-sync-recent.timer`.
 Check: systemctl list-timers | grep hwr-sync · one-shot: systemctl start hwr-sync-recent.service.

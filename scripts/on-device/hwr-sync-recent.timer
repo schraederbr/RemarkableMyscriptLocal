@@ -1,12 +1,12 @@
 [Unit]
-Description=Timer for reMarkable HWR sync-recent (interval from SYNC_INTERVAL_HOURS)
+Description=Timer for reMarkable HWR sync-recent (awake interval from SYNC_INTERVAL_MINUTES)
 
 [Timer]
-# First run shortly after boot; then every OnUnitActiveSec after each run starts
+# Monotonic time pauses while the tablet is suspended. A short interval therefore
+# means "within 15 awake minutes" without waking the tablet or draining battery.
 OnBootSec=5min
-OnUnitActiveSec=6h
+OnUnitActiveSec=15min
 AccuracySec=1min
-Persistent=true
 Unit=hwr-sync-recent.service
 
 [Install]

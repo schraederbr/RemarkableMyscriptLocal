@@ -6,13 +6,13 @@ Turn reMarkable 2 notebooks into **Joplin notes that sync with Joplin Cloud** (o
 
 ### Download and double-click (no paste required)
 
-From the [**v1.0.0** release](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/tag/v1.0.0):
+From the [**v1.0.1** release](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/tag/v1.0.1):
 
 | OS | Asset | How |
 |----|-------|-----|
-| **Windows** | [`install-rm2-windows.exe`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v1.0.0/install-rm2-windows.exe) | Double-click (console stays open for prompts). Fallback: [`install-rm2-windows.cmd`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v1.0.0/install-rm2-windows.cmd) |
-| **Linux** | [`install-rm2-linux`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v1.0.0/install-rm2-linux) | `chmod +x install-rm2-linux && ./install-rm2-linux` (or double-click from a file manager that runs executables in a terminal) |
-| **macOS** | [`install-rm2-macos.command`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v1.0.0/install-rm2-macos.command) | Double-click (opens Terminal). First time: right-click → Open if Gatekeeper blocks |
+| **Windows** | [`install-rm2-windows.exe`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v1.0.1/install-rm2-windows.exe) | Double-click (console stays open for prompts). Fallback: [`install-rm2-windows.cmd`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v1.0.1/install-rm2-windows.cmd) |
+| **Linux** | [`install-rm2-linux`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v1.0.1/install-rm2-linux) | `chmod +x install-rm2-linux && ./install-rm2-linux` (or double-click from a file manager that runs executables in a terminal) |
+| **macOS** | [`install-rm2-macos.command`](https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/v1.0.1/install-rm2-macos.command) | Double-click (opens Terminal). First time: right-click → Open if Gatekeeper blocks |
 
 SmartScreen / Gatekeeper may warn on first run — that is normal for unsigned downloadable installers.
 
@@ -21,18 +21,18 @@ SmartScreen / Gatekeeper may warn on first run — that is normal for unsigned d
 **Windows** (USB `10.11.99.1` by default — no local clone or Go required):
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v1.0.0/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell -NoProfile -ExecutionPolicy Bypass -File $f"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=$env:TEMP+'\install-from-web.ps1'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v1.0.1/scripts/install-from-web.ps1' -OutFile $f -UseBasicParsing; powershell -NoProfile -ExecutionPolicy Bypass -File $f"
 ```
 
 **Linux / macOS** (bash + curl + OpenSSH):
 
 ```
-curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v1.0.0/scripts/install-from-web.sh | bash
+curl -fsSL https://raw.githubusercontent.com/schraederbr/RemarkableMyscriptLocal/v1.0.1/scripts/install-from-web.sh | bash
 ```
 
-Downloads the **`v1.0.0`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `libatomic.so.1`, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
+Downloads the **`v1.0.1`** source + release assets over HTTPS (`rm2hwr-linux-armv7`, Node 20 armv7l tarball, `libatomic.so.1`, `node_sqlite3.node`, jonobones offline npm tarball), then runs the stack installer with `-SkipBuild` / `--skip-build`.
 
-**v1.0.0** is the stable release of the dual-firmware HWR-to-Joplin stack, with the optional AppLoad **Sync Joplin** shortcut, supervised jonobones API, and corrected automatic timer lifecycle.
+**v1.0.1** makes automatic sync sleep-aware: it checks every 15 awake minutes without waking the tablet, waits for Wi-Fi after resume, and defers cleanly when the tablet remains offline.
 
 From a local clone (optional):
 
@@ -57,7 +57,7 @@ Have ready (see [docs/install-checklist.md](docs/install-checklist.md)):
 - Joplin upload mode: SVG only / handwriting text / both (installer default: both)
 - MyScript `APP_KEY` (optional `HMAC_KEY`) from [developer.myscript.com](https://developer.myscript.com/) — **only if** mode is text or both (SVG-only skips these prompts)
 - Joplin Cloud email + password (or another sync target) — **verified up front** for Joplin Cloud before the long on-device install
-- Periodic sync interval hours (installer default: **6**; `0` disables systemd timer)
+- Auto-sync poll interval in awake minutes (installer default: **15**; `0` disables systemd timer)
 - Optional **AppLoad + Sync Joplin shortcut** (installer default: **No**; reMarkable 2 firmware 3.26.x-3.27.x only; interactive tablet passcode step)
 - Joplin notebook for **NEW** notes: blank = auto (notebook with most notes); or exact title / 32-hex id
 - Optional E2EE master password
@@ -105,7 +105,7 @@ Matching rule: **exact title** = reMarkable `visibleName`. Existing Joplin note 
 
 HWR markdown uses plain text lines `Remarkable:` and `Page N` (not `##` headings), plus optional `![Page N](….svg)` image embeds. The note body does **not** repeat an `# title` H1 — Joplin already shows `visibleName` as the note title.
 
-Manual one-shot is above. **Automatic:** systemd timer `hwr-sync-recent.timer` runs `sync-recent.sh` every `SYNC_INTERVAL_HOURS` (default 6; RM2 has no crond): last-30-day notebooks, skip unchanged pages via state sidecars, else `rm2hwr --joplin-upsert`.
+Manual one-shot is above. **Automatic:** systemd timer `hwr-sync-recent.timer` runs `sync-recent.sh` every `SYNC_INTERVAL_MINUTES` of awake time (default 15; RM2 has no crond): last-30-day notebooks, skip unchanged pages via state sidecars, else `rm2hwr --joplin-upsert`. Suspend time does not count, so the timer never wakes the tablet; after a normal user wake, a new note is detected within 15 awake minutes. Before uploads, the script waits briefly for the Wi-Fi default route to return.
 
 Handoff / replace markers / systemd timer: [docs/joplin-sync.md](docs/joplin-sync.md) · RM2 port notes: [docs/jonobones-rm2.md](docs/jonobones-rm2.md)
 
@@ -124,7 +124,7 @@ Handoff / replace markers / systemd timer: [docs/joplin-sync.md](docs/joplin-syn
 ```
 /home/root/hwr/
   bin/rm2hwr
-  conf/hwr.env              # MyScript keys + UPLOAD_MODE + SYNC_INTERVAL_HOURS (0600)
+  conf/hwr.env              # MyScript keys + UPLOAD_MODE + SYNC_INTERVAL_MINUTES (0600)
   conf/jonobones.env        # API token + optional JONOBONES_PARENT_ID/TITLE (written by installer)
   scripts/joplin-upsert.js
   scripts/sync-recent.sh    # systemd timer: recent notebooks → HWR → Joplin
@@ -134,7 +134,7 @@ Handoff / replace markers / systemd timer: [docs/joplin-sync.md](docs/joplin-syn
   out/<doc-uuid>/<page>.txt|.svg
 /home/root/.config/jonobones/default/   # jonobones profile + synced vault
 /etc/systemd/system/hwr-sync-recent.service
-/etc/systemd/system/hwr-sync-recent.timer   # OnUnitActiveSec from SYNC_INTERVAL_HOURS
+/etc/systemd/system/hwr-sync-recent.timer   # OnUnitActiveSec from SYNC_INTERVAL_MINUTES
 /etc/systemd/system/jonobones.service       # keeps local Joplin API alive after reboot
 /home/root/xovi/                            # optional XOVI/AppLoad installation
 /home/root/xovi/exthome/appload/sync-joplin # optional force-sync shortcut
@@ -151,7 +151,7 @@ LANG=en_US
 CONTENT_TYPE=Text
 API_URL=https://cloud.myscript.com/api/v4.0/iink/batch
 UPLOAD_MODE=both  # text | svg | both (unset → text for old installs; svg skips MyScript)
-SYNC_INTERVAL_HOURS=6  # systemd timer for sync-recent.sh; 0 disables
+SYNC_INTERVAL_MINUTES=15  # awake-time poll; 0 disables
 ```
 
 HMAC: `secret = APP_KEY + HMAC_KEY` (concatenation; `HMAC_KEY` may be empty), then HMAC-SHA512 over the raw body; headers `applicationKey` + `hmac`.

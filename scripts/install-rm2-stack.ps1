@@ -8,7 +8,7 @@
 # - reMarkable SSH password (auto-installs your PC SSH key once)
 # - Joplin upload mode (text / SVG / both; default both)
 # - MyScript APP_KEY (HMAC_KEY optional) only if mode is text or both
-# - Periodic sync interval hours (default 6; 0 disables systemd timer)
+# - Auto-sync poll interval in awake minutes (default 15; 0 disables systemd timer)
 # - Optional AppLoad launcher + Sync Joplin shortcut (default off)
 # - Joplin notebook for NEW notes (blank=auto most notes; or title / 32-hex id)
 # - Joplin Cloud email + password (or other sync target fields)
@@ -284,7 +284,7 @@ Write-Host "What this installer will ask for (have these ready):"
 Write-Host "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
 Write-Host "  2) Joplin upload mode: SVG only / handwriting text / both (default both)"
 Write-Host "  3) MyScript APP_KEY (HMAC optional) - only if you want handwriting text (text or both)"
-Write-Host "  4) Periodic sync interval hours (default 6; 0=disable systemd timer)"
+Write-Host "  4) Auto-sync poll interval in awake minutes (default 15; 0=disable systemd timer)"
 Write-Host "  5) Optional AppLoad launcher + Sync Joplin shortcut (default no)"
 Write-Host "  6) Joplin notebook for NEW notes (blank=auto most notes; or title/id)"
 Write-Host "  7) Joplin Cloud email + password"
@@ -386,16 +386,17 @@ if ($uploadMode -eq "svg") {
   }
 }
 
-$syncIntervalHours = if ($sec["SYNC_INTERVAL_HOURS"]) { $sec["SYNC_INTERVAL_HOURS"].Trim() } else { "" }
-if ($syncIntervalHours -notmatch '^\d+$') {
+$syncIntervalMinutes = if ($sec["SYNC_INTERVAL_MINUTES"]) { $sec["SYNC_INTERVAL_MINUTES"].Trim() } else { "" }
+if ($syncIntervalMinutes -notmatch '^\d+$') {
   if ($NonInteractive) {
-    $syncIntervalHours = "6"
+    $syncIntervalMinutes = "15"
   } else {
     Write-Host ""
     Write-Host "How often should the tablet auto-sync recent notebooks to Joplin?"
-    Write-Host "  Enter hours between runs (default 6). Use 0 to skip installing systemd timer."
-    $syncIntervalHours = Ask "SYNC_INTERVAL_HOURS" "6"
-    if ($syncIntervalHours -notmatch '^\d+$') { $syncIntervalHours = "6" }
+    Write-Host "  Enter awake minutes between checks (default 15). Sleeping time does not count."
+    Write-Host "  Use 0 to skip installing the systemd timer."
+    $syncIntervalMinutes = Ask "SYNC_INTERVAL_MINUTES" "15"
+    if ($syncIntervalMinutes -notmatch '^\d+$') { $syncIntervalMinutes = "15" }
   }
 }
 
@@ -613,7 +614,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "conf") | Out-Nul
   "HMAC_KEY=$hmacKey"
   "LANG=$lang"
   "UPLOAD_MODE=$uploadMode"
-  "SYNC_INTERVAL_HOURS=$syncIntervalHours"
+  "SYNC_INTERVAL_MINUTES=$syncIntervalMinutes"
   "INSTALL_APPLOAD=$(if ($installAppLoad) {'1'} else {'0'})"
   "JONOBONES_PARENT_ID=$parentId"
   "JONOBONES_PARENT_TITLE=$parentTitle"
@@ -635,7 +636,7 @@ $hwrLines = @(
   "CONTENT_TYPE=Text"
   "API_URL=https://cloud.myscript.com/api/v4.0/iink/batch"
   "UPLOAD_MODE=$uploadMode"
-  "SYNC_INTERVAL_HOURS=$syncIntervalHours"
+  "SYNC_INTERVAL_MINUTES=$syncIntervalMinutes"
 )
 Write-Utf8Lf $localHwr $hwrLines
 Ok "Saved conf/install.secrets + conf/hwr.env (gitignored)"
@@ -725,7 +726,7 @@ New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 $dist = Join-Path $distDir "rm2hwr-linux-armv7"
 $releaseTag = $env:RM2_RELEASE_TAG
 if (-not $releaseTag) { $releaseTag = $env:RELEASE_TAG }
-if (-not $releaseTag) { $releaseTag = "v1.0.0" }
+if (-not $releaseTag) { $releaseTag = "v1.0.1" }
 $releaseAssetBase = "https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/$releaseTag"
 
 function Get-ReleaseAssetHttps([string]$Name, [string]$OutFile, [int]$MinSize = 100000) {
@@ -989,7 +990,7 @@ if (Test-Path $offlineLocal) {
 Invoke-Remote "chmod 0600 /home/root/hwr/conf/hwr.env /home/root/hwr/conf/jonobones-init-answers.txt 2>/dev/null; chmod 0755 /home/root/hwr/bin/rm2hwr /home/root/hwr/scripts/*.sh; true"
 Ok "Deployed"
 
-Info "Installing systemd timer for sync-recent (interval=$syncIntervalHours h)..."
+Info "Installing systemd timer for sync-recent (awake interval=$syncIntervalMinutes min)..."
 # RM2 has systemctl but no crond; BusyBox crontab is a no-op on real hardware.
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\hwr-sync-recent.service") "/tmp/hwr-sync-recent.service"
 Copy-ToRemote (Join-Path $RepoRoot "scripts\on-device\hwr-sync-recent.timer") "/tmp/hwr-sync-recent.timer"
@@ -998,7 +999,7 @@ $timerLocal = Join-Path $env:TEMP "rm2-install-timer.sh"
 $timerLines = @(
   '#!/bin/sh'
   'set -e'
-  'HOURS=' + $syncIntervalHours
+  'MINUTES=' + $syncIntervalMinutes
   'UNIT_DIR=/etc/systemd/system'
   'chmod 0755 /home/root/hwr/scripts/sync-recent.sh'
   'chmod 0755 /home/root/hwr/scripts/wait-jonobones.sh'
@@ -1012,26 +1013,26 @@ $timerLines = @(
   '  if [ -s "$TMP" ]; then crontab "$TMP" 2>/dev/null || true; else crontab -r 2>/dev/null || true; fi'
   '  rm -f "$TMP"'
   'fi'
-  'if [ -n "$HOURS" ] && [ "$HOURS" -gt 0 ] 2>/dev/null; then'
-  '  # Rewrite OnUnitActiveSec from SYNC_INTERVAL_HOURS (OnBootSec stays 5min)'
-  '  sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=${HOURS}h/" "$UNIT_DIR/hwr-sync-recent.timer"'
+  'if [ -n "$MINUTES" ] && [ "$MINUTES" -gt 0 ] 2>/dev/null; then'
+  '  # Short monotonic polling guarantees a run while the tablet is awake without waking it from suspend.'
+  '  sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=${MINUTES}min/" "$UNIT_DIR/hwr-sync-recent.timer"'
   '  systemctl daemon-reload'
   '  systemctl enable hwr-sync-recent.timer'
   '  systemctl start hwr-sync-recent.timer'
-  '  echo "systemd timer enabled interval=${HOURS}h"'
+  '  echo "systemd timer enabled awake_interval=${MINUTES}min"'
   '  systemctl list-timers --all 2>/dev/null | grep -E "hwr-sync|NEXT|UNIT" || systemctl status hwr-sync-recent.timer --no-pager || true'
   'else'
   '  systemctl daemon-reload'
   '  systemctl stop hwr-sync-recent.timer 2>/dev/null || true'
   '  systemctl disable hwr-sync-recent.timer 2>/dev/null || true'
-  '  echo "systemd timer disabled (SYNC_INTERVAL_HOURS=0)"'
+  '  echo "systemd timer disabled (SYNC_INTERVAL_MINUTES=0)"'
   'fi'
   'rm -f /tmp/hwr-sync-recent.service /tmp/hwr-sync-recent.timer /tmp/jonobones.service'
 )
 Write-Utf8Lf $timerLocal $timerLines
 Copy-ToRemote $timerLocal "/tmp/rm2-install-timer.sh"
 Invoke-Remote "chmod 0755 /tmp/rm2-install-timer.sh; sh /tmp/rm2-install-timer.sh; rm -f /tmp/rm2-install-timer.sh"
-Ok "Systemd timer configured (SYNC_INTERVAL_HOURS=$syncIntervalHours)"
+Ok "Systemd timer configured (SYNC_INTERVAL_MINUTES=$syncIntervalMinutes)"
 
 function Install-OptionalAppLoad {
   if (-not $installAppLoad) { return }
@@ -1164,4 +1165,4 @@ Write-Host "MyScript env:   /home/root/hwr/conf/hwr.env"
 Write-Host "API token env:  /home/root/hwr/conf/jonobones.env"
 Write-Host "Sync script:    /home/root/hwr/scripts/sync-recent.sh"
 Write-Host "Sync state:     /home/root/hwr/state/<doc-uuid>.json"
-Write-Host "Timer interval: $syncIntervalHours h (0=disabled). Change SYNC_INTERVAL_HOURS in hwr.env + re-run installer, or systemctl edit hwr-sync-recent.timer."
+Write-Host "Timer interval: $syncIntervalMinutes awake min (0=disabled). Change SYNC_INTERVAL_MINUTES in hwr.env + re-run installer, or systemctl edit hwr-sync-recent.timer."
