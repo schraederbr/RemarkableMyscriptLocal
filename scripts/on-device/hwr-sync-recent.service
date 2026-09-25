@@ -1,7 +1,7 @@
 [Unit]
 Description=reMarkable HWR sync-recent to Joplin
-After=network-online.target
-Wants=network-online.target
+After=network-online.target jonobones.service
+Wants=network-online.target jonobones.service
 
 [Service]
 Type=oneshot

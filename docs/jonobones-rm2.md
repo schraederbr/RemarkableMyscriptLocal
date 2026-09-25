@@ -14,6 +14,7 @@ Headless Joplin-sync daemon on RM2 (armv7l, glibc, hard-float). Stay on firmware
 | Binding path | `…/sqlite3/lib/binding/napi-v6-linux-glibc-arm/node_sqlite3.node` |
 | @joplin/lib | **3.7.1** if Joplin Cloud requires `appMinVersion` 3.7.0+ (bootstrap may need `.default` on some SyncTarget requires — see below) |
 | API | `http://127.0.0.1:26637/v1` |
+| Boot service | `jonobones.service` (enabled by the stack installer) |
 
 ## Do not
 

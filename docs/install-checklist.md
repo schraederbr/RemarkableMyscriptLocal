@@ -13,6 +13,7 @@ Gather these **before** running `scripts/install-rm2-stack.ps1`. The installer a
 | MyScript account + `APP_KEY` | [Sign up / console](https://developer.myscript.com/) | **Required only** when mode is `text` or `both` (skipped for SVG-only) |
 | MyScript `HMAC_KEY` | Same app (optional) | Blank OK if HMAC disabled; not prompted for SVG-only |
 | **Sync interval (hours)** | Installer prompt (or `SYNC_INTERVAL_HOURS`) | Default **6**; `0` skips systemd timer |
+| Optional **AppLoad + shortcut** | Installer prompt (or `INSTALL_APPLOAD=0`) | Default **No**. If enabled, requires reMarkable 2 firmware 3.26.x-3.27.x and entering the tablet lock passcode during activation. |
 | Joplin **notebook for NEW notes** | Installer prompt (or `JONOBONES_PARENT_ID` / `JONOBONES_PARENT_TITLE`) | Blank = **auto** (most notes at create); or exact title / 32-hex id |
 | Joplin Cloud email + password | [joplincloud.com](https://joplincloud.com/) | **Direct sync** via jonobones on the tablet |
 
@@ -31,6 +32,7 @@ Username is always `root`. The device-specific password is shown on the tablet:
 |------|------|
 | Joplin E2EE master password | Vault uses end-to-end encryption |
 | Overwrite existing jonobones config | Tablet was set up before |
+| AppLoad UI launcher | Optional `AppLoad → Sync Joplin` force-sync shortcut; off by default |
 
 ## Already on the PC / in this repo
 
@@ -60,8 +62,10 @@ The long on-device job runs under `nohup`. While `install-rm2-stack.ps1` (or `.s
 
 > **First jonobones ↔ Joplin Cloud sync may take a long time.** Large vaults / many attachments often need **tens of minutes or more**. Keep Wi-Fi on; **do not unplug** and **do not assume the install failed** while jonobones is still syncing. See `/tmp/jonobones-start.log` and the host install heartbeat (`du` of the jonobones profile).
 
-On-device logs: `/tmp/rm2-install.log`, `/tmp/jonobones-start.log`.  
+On-device logs: `/tmp/rm2-install.log`, `/tmp/jonobones-start.log`. The installer enables `jonobones.service` so the local Joplin API returns automatically after reboot.
 Upsert uses `http://127.0.0.1:26637` and the token in `/home/root/hwr/conf/jonobones.env` (optional `JONOBONES_PARENT_ID` / `JONOBONES_PARENT_TITLE` for NEW notes; unset = auto most-notes).  
 Recognized notes sync to Joplin through jonobones — keep Wi-Fi on for ongoing sync.
 
 Periodic job: `sync-recent.sh` via **systemd timer** `hwr-sync-recent.timer` (default every 6h; RM2 has no crond). State: `/home/root/hwr/state/`. Log: `/tmp/hwr-sync-recent.log`. Change/disable: see [joplin-sync.md](joplin-sync.md).
+
+If AppLoad was selected, open **AppLoad → Sync Joplin** to force a run. XOVI intentionally returns to stock after reboot; reactivate with `/home/root/xovi/start`. If the modified UI misbehaves, run `/home/root/xovi/stock` over SSH.

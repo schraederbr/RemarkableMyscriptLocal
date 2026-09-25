@@ -54,14 +54,22 @@ sh "$HWR/scripts/jonobones-init-cloud.sh" || {
 if [ "${START_JONOBONES:-1}" = "1" ]; then
   echo "==> start jonobones"
   rm2_phase start-jonobones
-  jonobones stop 2>/dev/null || true
-  if command -v nohup >/dev/null 2>&1; then
-    nohup jonobones start > /tmp/jonobones-start.log 2>&1 &
+  if [ -f /etc/systemd/system/jonobones.service ] && command -v systemctl >/dev/null 2>&1; then
+    chmod 0755 "$HWR/scripts/wait-jonobones.sh"
+    systemctl daemon-reload
+    systemctl enable jonobones.service
+    systemctl restart jonobones.service
+    systemctl is-active --quiet jonobones.service
   else
-    jonobones start > /tmp/jonobones-start.log 2>&1 &
+    jonobones stop 2>/dev/null || true
+    if command -v nohup >/dev/null 2>&1; then
+      nohup jonobones start > /tmp/jonobones-start.log 2>&1 &
+    else
+      jonobones start > /tmp/jonobones-start.log 2>&1 &
+    fi
+    sleep 3
+    jonobones status || true
   fi
-  sleep 3
-  jonobones status || true
   echo "NOTE: first jonobones <-> Joplin Cloud sync may take a LONG time (tens of minutes+ on large vaults). Keep Wi-Fi on; do not assume install failed while syncing. See /tmp/jonobones-start.log"
 fi
 

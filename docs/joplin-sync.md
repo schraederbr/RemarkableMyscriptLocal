@@ -89,7 +89,7 @@ jonobones holds a local Joplin vault on the tablet and **syncs directly** with J
 
 Upsert writes into that local vault; the post-upsert sync pushes upstream.
 
-Requires jonobones daemon listening on `127.0.0.1:26637` and an API token from init:
+Requires jonobones listening on `127.0.0.1:26637` and an API token from init. The installer enables `jonobones.service`, and the sync service waits for that unit on each boot:
 
 ```bash
 export PATH=/home/root/.npm-global/bin:/home/root/opt/node/bin:$PATH
@@ -138,9 +138,8 @@ On-device **systemd timer** (default every **6** hours) runs /home/root/hwr/scri
 3. Else `rm2hwr --uuid … --joplin-upsert` (`UPLOAD_MODE` from `hwr.env`, default **both**)
 4. Writes state sidecar **only on success** (lastUploadedAt, optional joplinNoteId, per-page hashes)
 
-**Optional Oxide launcher:** Sync Joplin tile (`syncjoplin.oxide` → `sync-now.sh` → `systemctl start hwr-sync-recent.service`). Oxide is not required for core install.
+**Optional AppLoad launcher:** choose the installer’s AppLoad option (default off) to add **AppLoad → Sync Joplin**, which runs `systemctl start --no-block hwr-sync-recent.service`. This option is restricted to reMarkable 2 firmware 3.26.x-3.27.x and requires an interactive firmware-specific hashtable rebuild. After reboot run `/home/root/xovi/start`; stock recovery is `/home/root/xovi/stock`. AppLoad is not required for core sync.
 
 Change interval: SYNC_INTERVAL_HOURS in hwr.env + re-run installer (rewrites OnUnitActiveSec), or systemctl edit hwr-sync-recent.timer.  
 Disable: set SYNC_INTERVAL_HOURS=0 and re-run installer, or systemctl disable --now hwr-sync-recent.timer.  
 Check: systemctl list-timers | grep hwr-sync · one-shot: systemctl start hwr-sync-recent.service.
-

@@ -90,6 +90,42 @@ dotenv_get() {
   grep -E "^${key}=" "$file" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '\r' || true
 }
 
+sha256_file() {
+  local file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 "$file" | awk '{print $NF}'
+  else
+    echo "ERROR: sha256sum, shasum, or openssl is required" >&2
+    exit 1
+  fi
+}
+
+get_pinned_asset() {
+  local url="$1" out="$2" expected="$3" min_size="$4" actual=""
+  if [[ -f "$out" && $(wc -c <"$out") -ge "$min_size" ]]; then
+    actual=$(sha256_file "$out")
+  fi
+  if [[ "$actual" != "$expected" ]]; then
+    info "Downloading pinned optional asset: $(basename "$out")"
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsSL -o "$out" "$url"
+    elif command -v wget >/dev/null 2>&1; then
+      wget -q -O "$out" "$url"
+    else
+      echo "ERROR: curl or wget is required to download AppLoad" >&2
+      exit 1
+    fi
+  fi
+  [[ -f "$out" && $(wc -c <"$out") -ge "$min_size" ]] || { echo "ERROR: pinned asset missing or too small: $out" >&2; exit 1; }
+  actual=$(sha256_file "$out")
+  [[ "$actual" == "$expected" ]] || { echo "ERROR: SHA-256 mismatch for $out (got $actual)" >&2; exit 1; }
+  ok "Verified $(basename "$out") SHA-256"
+}
+
 json_payload() {
   local email="$1" pass="$2"
   if command -v python3 >/dev/null 2>&1; then
@@ -239,10 +275,11 @@ echo "  1) Tablet IP (USB default 10.11.99.1) + reMarkable SSH password"
 echo "  2) Joplin upload mode: SVG only / handwriting text / both (default both)"
 echo "  3) MyScript APP_KEY (HMAC optional) - only if handwriting text (text or both)"
 echo "  4) Periodic sync interval hours (default 6; 0=disable systemd timer)"
-echo "  5) Joplin notebook for NEW notes (blank=auto most notes; or title/id)"
-echo "  6) Joplin Cloud email + password"
-echo "  7) Optional: Joplin E2EE master password"
-echo "  8) Tablet on Wi-Fi with internet"
+echo "  5) Optional AppLoad launcher + Sync Joplin shortcut (default no)"
+echo "  6) Joplin notebook for NEW notes (blank=auto most notes; or title/id)"
+echo "  7) Joplin Cloud email + password"
+echo "  8) Optional: Joplin E2EE master password"
+echo "  9) Tablet on Wi-Fi with internet"
 echo "  See docs/install-checklist.md"
 echo
 
@@ -253,6 +290,7 @@ HMAC_KEY="$(dotenv_get HMAC_KEY "$SECRETS")"
 LANG_VAL="$(dotenv_get LANG "$SECRETS")"; LANG_VAL="${LANG_VAL:-en_US}"
 UPLOAD_MODE="$(dotenv_get UPLOAD_MODE "$SECRETS")"
 SYNC_INTERVAL_HOURS="$(dotenv_get SYNC_INTERVAL_HOURS "$SECRETS")"
+INSTALL_APPLOAD="$(dotenv_get INSTALL_APPLOAD "$SECRETS")"
 PARENT_ID="$(dotenv_get JONOBONES_PARENT_ID "$SECRETS")"
 PARENT_TITLE="$(dotenv_get JONOBONES_PARENT_TITLE "$SECRETS")"
 SYNC_TARGET="$(dotenv_get SYNC_TARGET "$SECRETS")"; SYNC_TARGET="${SYNC_TARGET:-joplinCloud}"
@@ -339,6 +377,23 @@ if [[ -z "$SYNC_INTERVAL_HOURS" ]]; then
     echo "  Enter hours between runs (default 6). Use 0 to skip installing systemd timer."
     SYNC_INTERVAL_HOURS=$(ask "Sync interval hours" "6")
   fi
+fi
+
+case "$(printf '%s' "$INSTALL_APPLOAD" | tr '[:upper:]' '[:lower:]')" in
+  1|y|yes|true|on) INSTALL_APPLOAD=1 ;;
+  *) INSTALL_APPLOAD=0 ;;
+esac
+if [[ -z "$(dotenv_get INSTALL_APPLOAD "$SECRETS")" && "$NONINTERACTIVE" != "1" ]]; then
+  echo
+  echo "Optional AppLoad UI launcher"
+  echo "  Adds AppLoad and a Sync Joplin shortcut to the tablet UI."
+  echo "  Supported here only on reMarkable 2 firmware 3.26.x-3.27.x."
+  echo "  Activation restarts the tablet UI and asks for the tablet lock passcode."
+  if ask_yes "Install AppLoad and the Sync Joplin shortcut?" 0; then INSTALL_APPLOAD=1; else INSTALL_APPLOAD=0; fi
+fi
+if [[ "$NONINTERACTIVE" == "1" && "$INSTALL_APPLOAD" == "1" ]]; then
+  echo "ERROR: INSTALL_APPLOAD=1 requires an interactive install because the tablet lock passcode is entered on-device during hashtable rebuild" >&2
+  exit 1
 fi
 
 if [[ -z "$PARENT_ID" && -z "$PARENT_TITLE" && "$NONINTERACTIVE" != "1" ]]; then
@@ -479,6 +534,7 @@ HMAC_KEY=$HMAC_KEY
 LANG=$LANG_VAL
 UPLOAD_MODE=$UPLOAD_MODE
 SYNC_INTERVAL_HOURS=$SYNC_INTERVAL_HOURS
+INSTALL_APPLOAD=$INSTALL_APPLOAD
 JONOBONES_PARENT_ID=$PARENT_ID
 JONOBONES_PARENT_TITLE=$PARENT_TITLE
 SYNC_TARGET=$SYNC_TARGET
@@ -513,6 +569,33 @@ ARCH=$(ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept
 if [[ "$ARCH" != "armv7l" ]]; then
   echo "ERROR: Expected armv7l, got '$ARCH'" >&2
   exit 1
+fi
+
+APPLOAD_BUNDLE_DIR=""
+XOVI_ARCHIVE=""
+APPLOAD_ARCHIVE=""
+APPLOAD_ICON=""
+if [[ "$INSTALL_APPLOAD" == "1" ]]; then
+  FIRMWARE=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "${USER_NAME}@${HOST}" \
+    "sed -n 's/^REMARKABLE_RELEASE_VERSION=//p' /usr/share/remarkable/update.conf 2>/dev/null | head -n1")
+  case "$FIRMWARE" in
+    3.26.*|3.27.*) ;;
+    *) echo "ERROR: AppLoad option supports reMarkable 2 firmware 3.26.x-3.27.x; tablet reports '$FIRMWARE'" >&2; exit 1 ;;
+  esac
+  APPLOAD_BUNDLE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rm2-appload-v053.XXXXXX")
+  trap '[[ -z "${APPLOAD_BUNDLE_DIR:-}" ]] || rm -rf "$APPLOAD_BUNDLE_DIR"' EXIT
+  XOVI_ARCHIVE="$APPLOAD_BUNDLE_DIR/xovi-arm32.tar.gz"
+  APPLOAD_ARCHIVE="$APPLOAD_BUNDLE_DIR/appload-arm32.zip"
+  APPLOAD_ICON="$APPLOAD_BUNDLE_DIR/appload-sync-icon.png"
+  get_pinned_asset \
+    "https://github.com/asivery/rm-xovi-extensions/releases/download/v19-23052026/xovi-arm32.tar.gz" \
+    "$XOVI_ARCHIVE" "9aa00537ad41e9be0c3151992bfc25106465318cf5bb4c41cf59b3ddd4866377" 6000000
+  get_pinned_asset \
+    "https://github.com/asivery/rm-appload/releases/download/v0.5.3/appload-arm32.zip" \
+    "$APPLOAD_ARCHIVE" "dd68c6816c121934da78f59eb497c215e5a9729200de0a8a5bcbeaa5d0aa068b" 4000000
+  get_pinned_asset \
+    "https://raw.githubusercontent.com/asivery/rm-appload/v0.5.3/examples/appload/frontend-only/icon.png" \
+    "$APPLOAD_ICON" "5fb6481e24bfaac1668bd28b921c5413b4cd0fec0ba8ce4e27dc52610837faab" 2000
 fi
 
 info "Checking tablet internet..."
@@ -565,7 +648,7 @@ fi
 
 # Binary: prefer dist, else HTTPS release
 DIST="$ROOT/dist/rm2hwr-linux-armv7"
-RELEASE_TAG="${RM2_RELEASE_TAG:-${RELEASE_TAG:-v0.3.9}}"
+RELEASE_TAG="${RM2_RELEASE_TAG:-${RELEASE_TAG:-v0.4.0}}"
 RELEASE_BASE="https://github.com/schraederbr/RemarkableMyscriptLocal/releases/download/${RELEASE_TAG}"
 if [[ -f "$DIST" && $(wc -c <"$DIST") -gt 100000 ]]; then
   ok "Using existing binary $DIST"
@@ -609,6 +692,7 @@ scp -o BatchMode=yes -o ConnectTimeout=10 \
   "$ROOT/scripts/on-device/install-node-jonobones.sh" \
   "$ROOT/scripts/on-device/jonobones-init-cloud.sh" \
   "$ROOT/scripts/on-device/install-job.sh" \
+  "$ROOT/scripts/on-device/wait-jonobones.sh" \
   "$ROOT/scripts/on-device/sync-recent.sh" \
   "$ROOT/scripts/joplin-upsert.js" \
   "${USER_NAME}@${HOST}:/home/root/hwr/scripts/"
@@ -618,6 +702,20 @@ if [[ -f "$ROOT/third_party/revcord/node_sqlite3.node" ]]; then
 fi
 scp -o BatchMode=yes "$LIBATOMIC" "${USER_NAME}@${HOST}:/home/root/hwr/lib/libatomic.so.1"
 scp -o BatchMode=yes "$HWR_ENV" "${USER_NAME}@${HOST}:/home/root/hwr/conf/hwr.env"
+if [[ "$INSTALL_APPLOAD" == "1" ]]; then
+  info "Staging pinned XOVI/AppLoad packages and Sync Joplin shortcut..."
+  ssh -o BatchMode=yes "${USER_NAME}@${HOST}" 'mkdir -p /tmp/appload-installer/sync-joplin'
+  scp -o BatchMode=yes "$XOVI_ARCHIVE" "${USER_NAME}@${HOST}:/tmp/appload-installer/xovi-arm32.tar.gz"
+  scp -o BatchMode=yes "$APPLOAD_ARCHIVE" "${USER_NAME}@${HOST}:/tmp/appload-installer/appload-arm32.zip"
+  scp -o BatchMode=yes "$APPLOAD_ICON" "${USER_NAME}@${HOST}:/tmp/appload-installer/appload-sync-icon.png"
+  scp -o BatchMode=yes \
+    "$ROOT/scripts/on-device/install-appload.sh" \
+    "${USER_NAME}@${HOST}:/tmp/appload-installer/install-appload.sh"
+  scp -o BatchMode=yes \
+    "$ROOT/scripts/on-device/appload-sync-joplin/external.manifest.json" \
+    "$ROOT/scripts/on-device/appload-sync-joplin/sync-now.sh" \
+    "${USER_NAME}@${HOST}:/tmp/appload-installer/sync-joplin/"
+fi
 if [[ -f "$ANSWERS" && "$DO_INIT" == "1" ]]; then
   scp -o BatchMode=yes "$ANSWERS" "${USER_NAME}@${HOST}:/home/root/hwr/conf/jonobones-init-answers.txt"
 fi
@@ -645,13 +743,16 @@ HOURS=${HOURS:-6}
 scp -o BatchMode=yes \
   "$ROOT/scripts/on-device/hwr-sync-recent.service" \
   "$ROOT/scripts/on-device/hwr-sync-recent.timer" \
+  "$ROOT/scripts/on-device/jonobones.service" \
   "${USER_NAME}@${HOST}:/tmp/"
 ssh -o BatchMode=yes "${USER_NAME}@${HOST}" "HOURS='$HOURS' sh -s" <<'TIMER'
 set -e
 UNIT_DIR=/etc/systemd/system
 chmod 0755 /home/root/hwr/scripts/sync-recent.sh
+chmod 0755 /home/root/hwr/scripts/wait-jonobones.sh
 cp /tmp/hwr-sync-recent.service "$UNIT_DIR/hwr-sync-recent.service"
 cp /tmp/hwr-sync-recent.timer "$UNIT_DIR/hwr-sync-recent.timer"
+cp /tmp/jonobones.service "$UNIT_DIR/jonobones.service"
 if command -v crontab >/dev/null 2>&1; then
   TMP=/tmp/rm2-crontab.new
   crontab -l 2>/dev/null | grep -v sync-recent.sh | grep -v rm2hwr-sync-recent > "$TMP" || true
@@ -670,8 +771,40 @@ else
   systemctl disable hwr-sync-recent.timer 2>/dev/null || true
   echo "systemd timer disabled (SYNC_INTERVAL_HOURS=0)"
 fi
-rm -f /tmp/hwr-sync-recent.service /tmp/hwr-sync-recent.timer
+rm -f /tmp/hwr-sync-recent.service /tmp/hwr-sync-recent.timer /tmp/jonobones.service
 TIMER
+
+install_optional_appload() {
+  [[ "$INSTALL_APPLOAD" == "1" ]] || return 0
+
+  info "Installing optional XOVI v19 + AppLoad v0.5.3 (ARM32)..."
+  ssh -o BatchMode=yes "${USER_NAME}@${HOST}" \
+    'chmod 0755 /tmp/appload-installer/install-appload.sh /tmp/appload-installer/sync-joplin/sync-now.sh; /tmp/appload-installer/install-appload.sh /tmp/appload-installer/xovi-arm32.tar.gz /tmp/appload-installer/appload-arm32.zip /tmp/appload-installer/sync-joplin /tmp/appload-installer/appload-sync-icon.png'
+  echo
+  warn "AppLoad activation will restart the tablet UI. Keep the tablet awake and enter its normal lock passcode when prompted on-screen."
+  ask "Press Enter when the tablet is nearby and ready" "" >/dev/null
+
+  if ! ssh -tt -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+      "${USER_NAME}@${HOST}" 'printf "\n" | /home/root/xovi/rebuild_hashtable'; then
+    warn "AppLoad hashtable rebuild failed; restoring the stock tablet UI."
+    ssh -o BatchMode=yes "${USER_NAME}@${HOST}" \
+      '/home/root/xovi/stock 2>/dev/null || systemctl restart xochitl' || true
+    return 1
+  fi
+
+  if ! ssh -o BatchMode=yes "${USER_NAME}@${HOST}" \
+      '/home/root/xovi/start; sleep 10; systemctl is-active --quiet xochitl; pid=$(pidof xochitl); test -n "$pid"; tr "\0" "\n" <"/proc/$pid/environ" | grep -q "^LD_PRELOAD=/home/root/xovi/xovi.so$"; test -x /home/root/xovi/exthome/appload/sync-joplin/sync-now.sh'; then
+    warn "AppLoad activation failed; restoring the stock tablet UI."
+    ssh -o BatchMode=yes "${USER_NAME}@${HOST}" \
+      '/home/root/xovi/stock 2>/dev/null || systemctl restart xochitl' || true
+    return 1
+  fi
+
+  ssh -o BatchMode=yes "${USER_NAME}@${HOST}" 'rm -rf /tmp/appload-installer'
+  ok "AppLoad active; open AppLoad in the sidebar and tap Sync Joplin to force a sync"
+  warn "After a reboot, reactivate with: ssh ${USER_NAME}@${HOST} /home/root/xovi/start"
+  echo "Stock recovery: ssh ${USER_NAME}@${HOST} /home/root/xovi/stock"
+}
 
 info "Starting on-device install job under nohup (survives SSH drop)..."
 echo "==> Job running on tablet. Heartbeat every ~60s (Ctrl+C here is safe - job keeps running)."
@@ -735,6 +868,7 @@ if [[ "$phase" != "ok" ]]; then
   echo "ERROR: timed out waiting for install-job" >&2
   exit 1
 fi
+install_optional_appload
 echo "Logs on tablet: /tmp/rm2-install.log  /tmp/jonobones-start.log"
 ok "Install finished"
 echo ""
