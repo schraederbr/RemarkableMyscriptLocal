@@ -145,6 +145,11 @@ for (const name of fs.readdirSync(xochitl)) {
   const id = name.slice(0, -'.metadata'.length);
   const meta = loadJSON(path.join(xochitl, id + '.metadata'));
   if (!meta || meta.deleted || meta.type !== 'DocumentType') continue;
+  const visibleName = typeof meta.visibleName === 'string' ? meta.visibleName : '';
+  if (visibleName.toLowerCase().includes('jignore')) {
+    console.log('IGNORE ' + id);
+    continue;
+  }
   const lm = lastModifiedMs(meta);
   if (lm && lm < cutoff) continue;
   const content = loadJSON(path.join(xochitl, id + '.content'));
@@ -171,6 +176,12 @@ failed=0
 while read -r action uuid; do
   [ -n "$action" ] || continue
   [ -n "$uuid" ] || continue
+  if [ "$action" = "IGNORE" ]; then
+    log "skip $uuid (name contains jignore)"
+    skipped=$((skipped + 1))
+    rm -f "$STATE_DIR/$uuid.pending.json"
+    continue
+  fi
   if [ "$action" = "SKIP" ]; then
     log "skip $uuid (state match)"
     skipped=$((skipped + 1))
